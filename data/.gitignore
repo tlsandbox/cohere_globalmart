@@ -1,0 +1,4 @@
+sample_clothes/
+cache/
+.tmp_openai_cookbook/
+retailnext_demo.db

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GlobalMart Fashion Assistant</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-bg"></div>
+
+    <header class="site-header">
+      <div class="brand-block">
+        <p class="brand-eyebrow">GlobalMart Fashion</p>
+        <h1 class="brand-title">Outfit Assistant</h1>
+      </div>
+
+      <form id="search-form" class="search-shell">
+        <label class="sr-only" for="search-input">Search</label>
+        <input
+          id="search-input"
+          type="text"
+          placeholder="Search in natural language, e.g. 'I need a modern navy look for a wedding'"
+          autocomplete="off"
+          required
+        />
+        <button
+          id="voice-button"
+          class="voice-button"
+          type="button"
+          title="Voice to text"
+          aria-label="Voice to text"
+        >
+          <span aria-hidden="true">&#127908;</span>
+        </button>
+        <button type="submit">Find Items</button>
+      </form>
+
+      <div class="header-actions">
+        <button id="camera-button" class="icon-button" type="button" title="Image Upload Match" aria-label="Image Upload Match">
+          <span class="icon">&#128247;</span>
+        </button>
+        <button class="icon-button" type="button" title="Cart" aria-label="Cart">
+          <span class="icon">&#128722;</span>
+        </button>
+        <button class="icon-button" type="button" title="Profile" aria-label="Profile">
+          <span class="icon">&#128100;</span>
+        </button>
+      </div>
+    </header>
+
+    <nav class="top-nav">
+      <a id="nav-home" class="active" href="/">Home</a>
+      <a data-gender="Women" href="/?gender=Women">Women</a>
+      <a data-gender="Men" href="/?gender=Men">Men</a>
+      <a href="/personalized">Your Personalized Item</a>
+    </nav>
+
+    <main class="main-content">
+      <section class="hero">
+        <div>
+          <h2>AI-guided shopping for your next purchase</h2>
+          <p>
+            Use natural-language search or upload an image. GlobalMart Fashion AI powered by Cohere finds similar,
+            updated styles from private catalog data.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h3>Suggested For You</h3>
+          <button id="refresh-button" class="ghost-button" type="button">Refresh Feed</button>
+        </div>
+        <div id="status-text" class="status-text"></div>
+        <div id="home-grid" class="product-grid"></div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <h4>Company</h4>
+        <a href="#">About GlobalMart Fashion</a>
+        <a href="#">Careers</a>
+        <a href="#">Stores</a>
+      </div>
+      <div>
+        <h4>Assistance</h4>
+        <a href="#">Customer Service</a>
+        <a href="#">Delivery</a>
+        <a href="#">Returns</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="#">Terms and Conditions</a>
+        <a href="#">Privacy Notice</a>
+        <a href="#">Cookie Settings</a>
+      </div>
+      <div>
+        <h4>Follow Us</h4>
+        <a href="#">Instagram</a>
+        <a href="#">YouTube</a>
+        <a href="#">LinkedIn</a>
+      </div>
+    </footer>
+
+    <dialog id="upload-modal" class="upload-modal">
+      <form id="upload-form" method="dialog" class="upload-form">
+        <h3>Image Upload Match</h3>
+        <p>Upload a JPG/PNG image and Outfit Assistant AI will recommend 10 similar items.</p>
+        <label for="image-input">Choose image</label>
+        <input id="image-input" name="image" type="file" accept=".jpg,.jpeg,.png" required />
+        <div class="upload-actions">
+          <button type="button" id="close-modal" class="ghost-button">Cancel</button>
+          <button type="submit">Upload and Match</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/static/home.js"></script>
+  </body>
+</html>

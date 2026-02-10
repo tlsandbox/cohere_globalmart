@@ -1,0 +1,71 @@
+# Troubleshooting Guide
+
+## 1) Browser shows `{"detail":"Not Found"}` on a local port
+
+Cause:
+
+- Another local service is bound to the port you opened.
+
+Fix:
+
+1. Run:
+   ```bash
+   ./scripts/run_api_dev.sh
+   ```
+2. Open the exact URL printed by the script (default `http://127.0.0.1:8005`).
+3. Do not assume an old port like `8000` or `8001` is this app.
+
+## 2) Script says no free ports in 8005-8009
+
+Cause:
+
+- All supported demo ports are occupied.
+
+Fix:
+
+1. Stop existing processes on `8005..8009`.
+2. Re-run `./scripts/run_api_dev.sh`.
+
+## 3) UI shows `Failed to fetch`
+
+Cause:
+
+- Browser is on a different origin than the running API.
+
+Fix:
+
+1. Start app from one process using `./scripts/run_api_dev.sh`.
+2. Use only the printed origin in browser.
+3. Hard refresh (`Cmd+Shift+R`) after restarting.
+
+## 4) AI requests timeout
+
+Cause:
+
+- Upstream Cohere request delay or network instability.
+
+Fix:
+
+1. Verify health:
+   ```bash
+   curl http://127.0.0.1:8005/api/health
+   ```
+2. Confirm `COHERE_API_KEY` is set in `.env`.
+3. Tune timeouts in `.env`:
+   - `RN_AI_SEARCH_TIMEOUT_SECONDS`
+   - `RN_AI_IMAGE_TIMEOUT_SECONDS`
+   - `RN_AI_MATCH_TIMEOUT_SECONDS`
+4. Retry. Fallback paths should still return usable results.
+
+## 5) Voice search does not transcribe
+
+Cause:
+
+- Browser does not support Web Speech API (`SpeechRecognition`/`webkitSpeechRecognition`) or microphone permission is blocked.
+- If the browser falls back to backend `/api/transcribe`, this Cohere build intentionally returns an unsupported message.
+
+Fix:
+
+1. Allow microphone permission for your app origin (for example `http://127.0.0.1:8005`).
+2. Prefer Chrome/Edge for Web Speech API support.
+3. If your network is unstable and speech fails, retry or use typed search/image upload.
