@@ -3,46 +3,90 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
-import subprocess
+import zipfile
 from pathlib import Path
 
 
-REPO_URL = "https://github.com/openai/openai-cookbook.git"
-SPARSE_PATH = "examples/data/sample_clothes"
+REQUIRED_FILES = (
+    "sample_styles.csv",
+    "sample_styles_with_embeddings.csv",
+)
+REQUIRED_DIRS = (
+    "sample_images",
+)
 
 
-def _run(cmd: list[str], cwd: Path) -> None:
-    subprocess.run(cmd, cwd=str(cwd), check=True)
+def _has_required_dataset(dest_dir: Path) -> bool:
+    for file_name in REQUIRED_FILES:
+        if not (dest_dir / file_name).exists():
+            return False
+    for dir_name in REQUIRED_DIRS:
+        path = dest_dir / dir_name
+        if not path.exists() or not path.is_dir():
+            return False
+    return True
 
 
-def download_sample_clothes(dest_dir: Path) -> None:
+def _extract_zip(zip_path: Path, dest_dir: Path) -> None:
+    tmp_dir = dest_dir.parent / ".tmp_sample_data"
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(tmp_dir)
+
+    candidates = [tmp_dir]
+    candidates.extend([path for path in tmp_dir.iterdir() if path.is_dir()])
+
+    source_dir = None
+    for candidate in candidates:
+        if _has_required_dataset(candidate):
+            source_dir = candidate
+            break
+
+    if source_dir is None:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise FileNotFoundError(
+            "Could not find required sample dataset files in the provided zip. "
+            "Expected files: sample_styles.csv, sample_styles_with_embeddings.csv, sample_images/."
+        )
+
     dest_dir.mkdir(parents=True, exist_ok=True)
-    if (dest_dir / "sample_styles_with_embeddings.csv").exists():
-        print(f"Already present: {dest_dir}")
+    for file_name in REQUIRED_FILES:
+        shutil.copy2(source_dir / file_name, dest_dir / file_name)
+
+    images_dir = dest_dir / "sample_images"
+    if images_dir.exists():
+        shutil.rmtree(images_dir)
+    shutil.copytree(source_dir / "sample_images", images_dir)
+
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def prepare_sample_clothes(dest_dir: Path, from_zip: Path | None = None) -> None:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    if _has_required_dataset(dest_dir):
+        print(f"Dataset already present at {dest_dir}")
         return
 
-    tmp = dest_dir.parent / ".tmp_openai_cookbook"
-    if tmp.exists():
-        shutil.rmtree(tmp)
-    tmp.mkdir(parents=True, exist_ok=True)
+    if from_zip is None:
+        raise FileNotFoundError(
+            "Sample dataset is missing. Provide a zip archive with --from-zip "
+            "or place dataset files directly into data/sample_clothes/."
+        )
 
-    print("Cloning OpenAI Cookbook (sparse)…")
-    _run(["git", "clone", "--filter=blob:none", "--no-checkout", REPO_URL, str(tmp)], cwd=dest_dir.parent)
-    _run(["git", "sparse-checkout", "init", "--cone"], cwd=tmp)
-    _run(["git", "sparse-checkout", "set", SPARSE_PATH], cwd=tmp)
-    _run(["git", "checkout"], cwd=tmp)
+    if not from_zip.exists():
+        raise FileNotFoundError(f"Zip file not found: {from_zip}")
 
-    src = tmp / SPARSE_PATH
-    print(f"Copying {src} -> {dest_dir}")
-    for child in src.iterdir():
-        target = dest_dir / child.name
-        if child.is_dir():
-            shutil.copytree(child, target)
-        else:
-            shutil.copy2(child, target)
+    print(f"Extracting sample dataset from {from_zip} ...")
+    _extract_zip(from_zip, dest_dir)
 
-    shutil.rmtree(tmp, ignore_errors=True)
-    print("Done.")
+    if not _has_required_dataset(dest_dir):
+        raise RuntimeError("Dataset extraction completed but required files are still missing.")
+
+    print(f"Dataset prepared at {dest_dir}")
 
 
 def main() -> None:
@@ -52,12 +96,17 @@ def main() -> None:
         default=str(Path(__file__).resolve().parents[1] / "data" / "sample_clothes"),
         help="Destination directory for sample_clothes",
     )
+    parser.add_argument(
+        "--from-zip",
+        default="",
+        help="Path to a local zip archive containing sample_clothes files.",
+    )
     args = parser.parse_args()
 
     dest_dir = Path(os.path.expanduser(args.dest)).resolve()
-    download_sample_clothes(dest_dir)
+    from_zip = Path(os.path.expanduser(args.from_zip)).resolve() if args.from_zip else None
+    prepare_sample_clothes(dest_dir=dest_dir, from_zip=from_zip)
 
 
 if __name__ == "__main__":
     main()
-

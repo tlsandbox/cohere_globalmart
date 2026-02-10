@@ -19,10 +19,7 @@ from retailnext_outfit_assistant.cohere_utils import (
 from retailnext_outfit_assistant.db import RetailNextDB
 
 
-_GITHUB_IMAGE_PREFIX = (
-    "https://raw.githubusercontent.com/openai/openai-cookbook/main/"
-    "examples/data/sample_clothes/sample_images"
-)
+_FALLBACK_IMAGE_PATH = "/static/placeholder-image.svg"
 _LOGGER = logging.getLogger(__name__)
 _COHERE_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cohere-call")
 _GENERIC_KEYWORDS = {
@@ -1054,7 +1051,7 @@ class OutfitAssistantService:
         return None
 
     def fallback_image_url(self, product_id: int) -> str:
-        return f"{_GITHUB_IMAGE_PREFIX}/{product_id}.jpg"
+        return _FALLBACK_IMAGE_PATH
 
     def stats(self) -> dict[str, Any]:
         details = self.db.stats()

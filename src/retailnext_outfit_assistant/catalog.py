@@ -2,18 +2,11 @@ from __future__ import annotations
 
 import csv
 import json
-import shutil
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
-
-SAMPLE_CATALOG_URL = (
-    "https://raw.githubusercontent.com/openai/openai-cookbook/main/"
-    "examples/data/sample_clothes/sample_styles_with_embeddings.csv"
-)
 
 
 @dataclass(frozen=True)
@@ -51,22 +44,14 @@ def _parse_embedding(raw: str) -> np.ndarray:
     return np.asarray(vec, dtype=np.float32)
 
 
-def _download_file(url: str, dest_path: Path) -> None:
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url) as r, dest_path.open("wb") as f:
-        shutil.copyfileobj(r, f)
-
-
 def load_sample_catalog(data_dir: Path) -> tuple[list[CatalogItem], np.ndarray]:
     csv_path = data_dir / "sample_styles_with_embeddings.csv"
     if not csv_path.exists():
-        try:
-            _download_file(SAMPLE_CATALOG_URL, csv_path)
-        except Exception as e:
-            raise FileNotFoundError(
-                f"Missing {csv_path}. Download failed ({e}). "
-                "Run: python scripts/download_sample_clothes.py (from retailnext_outfit_assistant/) to fetch the full dataset."
-            ) from e
+        raise FileNotFoundError(
+            f"Missing {csv_path}. "
+            "Place dataset files under data/sample_clothes/ or run "
+            "`python scripts/download_sample_clothes.py --from-zip /path/to/sample_clothes.zip`."
+        )
 
     items: list[CatalogItem] = []
     embeddings: list[np.ndarray] = []
