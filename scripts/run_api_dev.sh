@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Starts the local GlobalMart Fashion FastAPI server with safe port rotation (8005-8009)
+# and stale uvicorn process cleanup for consistent demo startup behavior.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

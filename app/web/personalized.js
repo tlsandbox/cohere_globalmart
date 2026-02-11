@@ -173,7 +173,10 @@ function initializeLanguageSelector() {
     return;
   }
   languageSelect.innerHTML = languageOptions()
-    .map((option) => `<option value="${option.code}">${option.flag} ${option.label}</option>`)
+    .map(
+      (option) =>
+        `<option value="${option.code}" title="${option.label}" aria-label="${option.label}">${option.flag}</option>`
+    )
     .join('');
   languageSelect.value = currentLanguage;
   languageSelect.addEventListener('change', () => {
@@ -595,11 +598,11 @@ function queryMatchSignals(product) {
 
   const padded = ` ${queryNorm} `;
   const checks = [
-    { key: product.gender, label: `gender: ${product.gender}` },
-    { key: product.article_type, label: `item type: ${product.article_type}` },
-    { key: product.base_colour, label: `color: ${product.base_colour}` },
-    { key: product.usage, label: `occasion: ${product.usage}` },
-    { key: product.season, label: `season: ${product.season}` },
+    { key: product.gender, label: t(currentLanguage, 'query_match_gender', { value: product.gender }) },
+    { key: product.article_type, label: t(currentLanguage, 'query_match_item_type', { value: product.article_type }) },
+    { key: product.base_colour, label: t(currentLanguage, 'query_match_color', { value: product.base_colour }) },
+    { key: product.usage, label: t(currentLanguage, 'query_match_occasion', { value: product.usage }) },
+    { key: product.season, label: t(currentLanguage, 'query_match_season', { value: product.season }) },
   ];
 
   const matches = [];
@@ -619,7 +622,7 @@ function queryMatchSignals(product) {
       .filter((token) => token.length > 3 && productBlob.includes(token))
       .slice(0, 3);
     if (keywordHits.length) {
-      matches.push(`style keywords: ${keywordHits.join(', ')}`);
+      matches.push(t(currentLanguage, 'query_match_style_keywords', { value: keywordHits.join(', ') }));
     }
   }
 
@@ -629,7 +632,7 @@ function queryMatchSignals(product) {
 function shortQueryLabel() {
   const query = String(currentSessionQuery || '').trim();
   if (!query) {
-    return 'your latest request';
+    return t(currentLanguage, 'query_latest_request');
   }
   if (query.length <= 72) {
     return `"${query}"`;
@@ -672,22 +675,27 @@ function scoreBarMarkup(score, label) {
 
 function aiExplainModel(product, safeChips) {
   const querySignals = queryMatchSignals(product);
-  const conciseReason = querySignals.length ? querySignals.join(', ') : 'overall style intent and category fit';
+  const conciseReason = querySignals.length ? querySignals.join(', ') : t(currentLanguage, 'reason_overall_fit');
   const userFacingReasons = safeChips
+    .filter((value) => {
+      const normalized = String(value || '').toLowerCase();
+      return !normalized.includes('keyword') && !normalized.includes('semantic') && !normalized.includes('rerank');
+    })
     .map((value) => reasonToDisplayText(value))
-    .filter((value) => !['Keyword relevance', 'Semantic similarity', 'Cohere rerank'].includes(value))
     .slice(0, 2);
 
   const lines = [
-    `Query matched: ${conciseReason}.`,
-    `Selection logic: hybrid ranking blends exact keyword hits with style similarity.`,
+    t(currentLanguage, 'ai_explain_query_matched', { reason: conciseReason }),
+    t(currentLanguage, 'ai_explain_selection_default'),
   ];
   if (userFacingReasons.length) {
-    lines[1] = `Selection logic: ${userFacingReasons.join(', ')} plus hybrid ranking across keyword and style similarity.`;
+    lines[1] = t(currentLanguage, 'ai_explain_selection_with_reasons', {
+      reasons: userFacingReasons.join(', '),
+    });
   }
 
   return {
-    heading: `Matches ${shortQueryLabel()}`,
+    heading: t(currentLanguage, 'ai_explain_heading', { query: shortQueryLabel() }),
     lines,
   };
 }
@@ -842,31 +850,31 @@ function reasonToDisplayText(reason) {
   }
   const normalized = value.toLowerCase();
   if (normalized.includes('keyword')) {
-    return 'Keyword relevance';
+    return t(currentLanguage, 'reason_keyword_relevance');
   }
   if (normalized.includes('semantic')) {
-    return 'Semantic similarity';
+    return t(currentLanguage, 'reason_semantic_similarity');
   }
   if (normalized.includes('rerank') || normalized.includes('cohere')) {
-    return 'Cohere rerank';
+    return t(currentLanguage, 'reason_cohere_rerank');
   }
   if (normalized.includes('gender')) {
-    return 'Gender aligned';
+    return t(currentLanguage, 'reason_gender_aligned');
   }
   if (normalized.includes('article')) {
-    return 'Article type match';
+    return t(currentLanguage, 'reason_article_type_match');
   }
   if (normalized.includes('color')) {
-    return 'Color preference match';
+    return t(currentLanguage, 'reason_color_preference_match');
   }
   if (normalized.includes('season')) {
-    return 'Season aligned';
+    return t(currentLanguage, 'reason_season_aligned');
   }
   if (normalized.includes('occasion') || normalized.includes('usage')) {
-    return 'Usage aligned';
+    return t(currentLanguage, 'reason_usage_aligned');
   }
   if (normalized.includes('recent')) {
-    return 'Recency boost';
+    return t(currentLanguage, 'reason_recency_boost');
   }
   return value;
 }
@@ -928,8 +936,8 @@ function productCard(product) {
     const explain = document.createElement('div');
     explain.className = 'ai-explain';
     explain.innerHTML = `
-      <p class="product-desc"><strong>AI Explain:</strong> ${escapeHtml(explainPayload.heading)}</p>
-      ${scoreBarMarkup(product.score, 'Query match')}
+      <p class="product-desc"><strong>${escapeHtml(t(currentLanguage, 'ai_explain_title'))}:</strong> ${escapeHtml(explainPayload.heading)}</p>
+      ${scoreBarMarkup(product.score, t(currentLanguage, 'ai_explain_score_label'))}
       <ul class="ai-explain-list">
         ${explainPayload.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}
       </ul>
@@ -977,8 +985,8 @@ function completeLookCard(product) {
         <span>${escapeHtml(product.article_type)}</span>
         <span>${escapeHtml(product.base_colour)}</span>
       </div>
-      <p class="product-desc"><strong>Why suggested:</strong> ${escapeHtml(product.explanation || 'Recommended as a compatible piece for your selected item.')}</p>
-      ${scoreBarMarkup(product.score, 'Outfit fit')}
+      <p class="product-desc"><strong>${escapeHtml(t(currentLanguage, 'why_suggested'))}:</strong> ${escapeHtml(product.explanation || 'Recommended as a compatible piece for your selected item.')}</p>
+      ${scoreBarMarkup(product.score, t(currentLanguage, 'suggest_fit_score_label'))}
     </div>
   `;
 

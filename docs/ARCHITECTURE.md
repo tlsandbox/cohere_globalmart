@@ -50,6 +50,9 @@ For recommendation generation:
    - optional recency boost by product year
 7. Return recommendations with explanation chips.
 
+Performance note:
+- For multilingual Suggest (`/api/complete-look`), explanation and assistant-note localization uses fast templates/term maps (not per-item LLM translation) to keep latency close to English.
+
 ## Primary Runtime Flows
 
 ### Multilingual Request Flow

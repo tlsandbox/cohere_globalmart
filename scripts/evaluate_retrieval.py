@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runs retrieval quality/latency evaluation for baseline and upgraded ranking pipelines."""
+"""Benchmarks lexical baseline vs hybrid retrieval and writes docs/eval_last_run.json."""
 
 from __future__ import annotations
 

@@ -1346,10 +1346,11 @@ class OutfitAssistantService:
         return {
             "session_id": session_id,
             "anchor_product": self._build_public_product(anchor, language=normalized_language),
-            "assistant_note": self._translate_text_cached(
-                text="Quick suggest session created from the selected catalog item.",
-                language=normalized_language,
-            ),
+            "assistant_note": {
+                "ja": "選択した商品からクイック提案セッションを作成しました。",
+                "zh": "已根据所选商品创建快速推荐会话。",
+                "es": "Se creó una sesión rápida de sugerencias desde el artículo seleccionado.",
+            }.get(normalized_language, "Quick suggest session created from the selected catalog item."),
         }
 
     def _ensure_transcriber(self):
@@ -1594,10 +1595,7 @@ class OutfitAssistantService:
             product["score"] = float(row["score"])
             chips = explanations.get(product_id) or self._fallback_recommendation_chips(session, row)
             product["explanation_chips"] = chips
-            product["explanation"] = self._translate_text_cached(
-                text=" | ".join(chips),
-                language=normalized_language,
-            )
+            product["explanation"] = " | ".join(chips)
             if row.get("match_verdict"):
                 product["match"] = {
                     "verdict": self._translate_text_cached(
@@ -2090,41 +2088,140 @@ class OutfitAssistantService:
         anchor: dict[str, Any],
         candidate: dict[str, Any],
         intent: dict[str, Any],
+        language: str = "en",
     ) -> str:
+        normalized_language = self._normalize_language(language)
         reasons: list[str] = []
 
-        anchor_article = str(anchor.get("article_type") or "").strip()
-        candidate_article = str(candidate.get("article_type") or "").strip()
+        anchor_article_raw = str(anchor.get("article_type") or "").strip()
+        candidate_article_raw = str(candidate.get("article_type") or "").strip()
+        anchor_article = self._translate_term(anchor_article_raw, normalized_language)
+        candidate_article = self._translate_term(candidate_article_raw, normalized_language)
         if anchor_article and candidate_article:
-            if self._normalize_text(anchor_article) != self._normalize_text(candidate_article):
-                reasons.append(
-                    f"adds a complementary {candidate_article.lower()} to your {anchor_article.lower()}"
-                )
+            if self._normalize_text(anchor_article_raw) != self._normalize_text(candidate_article_raw):
+                if normalized_language == "ja":
+                    reasons.append(f"{anchor_article}に合う{candidate_article}を補完")
+                elif normalized_language == "zh":
+                    reasons.append(f"可与{anchor_article}互补搭配{candidate_article}")
+                elif normalized_language == "es":
+                    reasons.append(f"añade un {candidate_article.lower()} complementario a tu {anchor_article.lower()}")
+                else:
+                    reasons.append(f"adds a complementary {candidate_article.lower()} to your {anchor_article.lower()}")
             else:
-                reasons.append(f"keeps the same {candidate_article.lower()} style direction")
+                if normalized_language == "ja":
+                    reasons.append(f"{candidate_article}のスタイル方向を維持")
+                elif normalized_language == "zh":
+                    reasons.append(f"保持同类{candidate_article}风格方向")
+                elif normalized_language == "es":
+                    reasons.append(f"mantiene la misma dirección de estilo de {candidate_article.lower()}")
+                else:
+                    reasons.append(f"keeps the same {candidate_article.lower()} style direction")
 
-        anchor_color = str(anchor.get("base_colour") or "").strip()
-        candidate_color = str(candidate.get("base_colour") or "").strip()
+        anchor_color_raw = str(anchor.get("base_colour") or "").strip()
+        candidate_color_raw = str(candidate.get("base_colour") or "").strip()
+        anchor_color = self._translate_term(anchor_color_raw, normalized_language)
+        candidate_color = self._translate_term(candidate_color_raw, normalized_language)
         color_hints = [str(value).strip() for value in intent.get("color_hints", []) if str(value).strip()]
-        if candidate_color:
-            if anchor_color and self._normalize_text(anchor_color) == self._normalize_text(candidate_color):
-                reasons.append(f"matches your selected {candidate_color.lower()} color tone")
-            elif any(self._normalize_text(value) == self._normalize_text(candidate_color) for value in color_hints):
-                reasons.append(f"fits your color preference for {candidate_color.lower()}")
+        if candidate_color_raw:
+            if anchor_color_raw and self._normalize_text(anchor_color_raw) == self._normalize_text(candidate_color_raw):
+                if normalized_language == "ja":
+                    reasons.append(f"選択した{candidate_color}の色調に一致")
+                elif normalized_language == "zh":
+                    reasons.append(f"与所选{candidate_color}色调一致")
+                elif normalized_language == "es":
+                    reasons.append(f"combina con el tono {candidate_color.lower()} seleccionado")
+                else:
+                    reasons.append(f"matches your selected {candidate_color.lower()} color tone")
+            elif any(self._normalize_text(value) == self._normalize_text(candidate_color_raw) for value in color_hints):
+                if normalized_language == "ja":
+                    reasons.append(f"{candidate_color}の色の好みに適合")
+                elif normalized_language == "zh":
+                    reasons.append(f"符合你对{candidate_color}的颜色偏好")
+                elif normalized_language == "es":
+                    reasons.append(f"encaja con tu preferencia de color {candidate_color.lower()}")
+                else:
+                    reasons.append(f"fits your color preference for {candidate_color.lower()}")
 
         usage_hints = [str(value).strip() for value in intent.get("usage_hints", []) if str(value).strip()]
-        anchor_usage = str(anchor.get("usage") or "").strip()
-        candidate_usage = str(candidate.get("usage") or "").strip()
-        usage_target = usage_hints[0] if usage_hints else anchor_usage
-        if usage_target and candidate_usage:
-            if self._normalize_text(usage_target) == self._normalize_text(candidate_usage):
-                reasons.append(f"fits the {candidate_usage.lower()} occasion from your request")
+        anchor_usage_raw = str(anchor.get("usage") or "").strip()
+        candidate_usage_raw = str(candidate.get("usage") or "").strip()
+        usage_target = usage_hints[0] if usage_hints else anchor_usage_raw
+        candidate_usage = self._translate_term(candidate_usage_raw, normalized_language)
+        if usage_target and candidate_usage_raw:
+            if self._normalize_text(usage_target) == self._normalize_text(candidate_usage_raw):
+                if normalized_language == "ja":
+                    reasons.append(f"リクエストの{candidate_usage}シーンに適合")
+                elif normalized_language == "zh":
+                    reasons.append(f"符合你请求中的{candidate_usage}场景")
+                elif normalized_language == "es":
+                    reasons.append(f"encaja con la ocasión {candidate_usage.lower()} de tu solicitud")
+                else:
+                    reasons.append(f"fits the {candidate_usage.lower()} occasion from your request")
 
         if not reasons:
-            reasons.append("fits the selected look profile")
+            if normalized_language == "ja":
+                reasons.append("選択したスタイルに適合")
+            elif normalized_language == "zh":
+                reasons.append("符合所选穿搭风格")
+            elif normalized_language == "es":
+                reasons.append("encaja con el perfil del look seleccionado")
+            else:
+                reasons.append("fits the selected look profile")
 
-        reason_text = "; ".join(reasons[:2])
+        if normalized_language in {"ja", "zh"}:
+            reason_text = "、".join(reasons[:2])
+        else:
+            reason_text = "; ".join(reasons[:2])
+        if normalized_language == "ja":
+            return f"{reason_text}ため、おすすめしています。"
+        if normalized_language == "zh":
+            return f"建议该商品，因为{reason_text}。"
+        if normalized_language == "es":
+            return f"Sugerido porque {reason_text}."
         return f"Suggested because it {reason_text}."
+
+    def _complete_look_note(self, *, query_text: str, anchor_name: str, language: str) -> str:
+        normalized_language = self._normalize_language(language)
+        safe_anchor = anchor_name or "the selected item"
+        if query_text:
+            if normalized_language == "ja":
+                return (
+                    f"クエリ「{query_text}」に合わせ、{safe_anchor}を軸に、"
+                    "補完的なアイテム種別を優先して提案しています。"
+                )
+            if normalized_language == "zh":
+                return (
+                    f"完整搭配建议已结合你的查询“{query_text}”，并以 {safe_anchor} 为核心，"
+                    "优先推荐互补的商品品类。"
+                )
+            if normalized_language == "es":
+                return (
+                    f'Las sugerencias para completar el look se ajustan a tu consulta "{query_text}" '
+                    f"y toman como base {safe_anchor}, priorizando tipos de artículo complementarios."
+                )
+            return (
+                f'Complete-look suggestions are tuned to your query "{query_text}" and anchored on '
+                f"{safe_anchor}, prioritizing complementary article types."
+            )
+
+        if normalized_language == "ja":
+            return (
+                f"{safe_anchor}を軸に、補完的なアイテム種別・色・カテゴリ・利用シーンの"
+                "相性でコーデ提案を生成しています。"
+            )
+        if normalized_language == "zh":
+            return (
+                f"推荐以 {safe_anchor} 为核心，并按品类互补、颜色、类别与使用场景兼容性生成。"
+            )
+        if normalized_language == "es":
+            return (
+                f"Las sugerencias se anclan en {safe_anchor} y se seleccionan por compatibilidad de tipo "
+                "de artículo, color, categoría y ocasión."
+            )
+        return (
+            f"Complete-look suggestions are anchored on {safe_anchor} and selected "
+            "for complementary article types, color, category, and occasion compatibility."
+        )
 
     def complete_the_look(
         self,
@@ -2227,8 +2324,10 @@ class OutfitAssistantService:
                     anchor=anchor,
                     candidate=row,
                     intent=intent,
+                    language=normalized_language,
                 ),
                 language=normalized_language,
+                allow_model=False,
             )
             recs.append(product)
 
@@ -2241,21 +2340,16 @@ class OutfitAssistantService:
         )
 
         query_text = str(session.get("query_text") or "").strip()
-        if query_text:
-            note = (
-                f'Complete-look suggestions are tuned to your query "{query_text}" and anchored on '
-                f'{anchor.get("name", "the selected item")}, prioritizing complementary article types.'
-            )
-        else:
-            note = (
-                f'Complete-look suggestions are anchored on {anchor.get("name", "the selected item")} and selected '
-                "for complementary article types, color, category, and occasion compatibility."
-            )
+        note = self._complete_look_note(
+            query_text=query_text,
+            anchor_name=str(anchor.get("name") or "the selected item"),
+            language=normalized_language,
+        )
 
         return {
             "session_id": session_id,
             "anchor_product": self._build_public_product(anchor, language=normalized_language),
-            "assistant_note": self._translate_text_cached(text=note, language=normalized_language),
+            "assistant_note": note,
             "ai_powered": ai_powered,
             "recommendations": recs,
             "language": normalized_language,

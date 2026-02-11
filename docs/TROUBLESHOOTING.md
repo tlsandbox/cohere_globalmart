@@ -87,3 +87,16 @@ Fix:
    - `GET /api/profile`
    - `GET /api/cart`
    - `POST /api/cart/add`
+
+## 8) Language changed but text is still mixed
+
+Cause:
+- Browser cached older frontend bundles or URL missing `lang` query parameter.
+
+Fix:
+1. Use the top-right flag selector once, then refresh.
+2. Confirm URL contains `lang=en|ja|zh|es`.
+3. Hard refresh (`Cmd+Shift+R`) if old strings remain.
+4. Verify API localization quickly:
+   - `GET /api/languages`
+   - `GET /api/home-products?lang=ja`

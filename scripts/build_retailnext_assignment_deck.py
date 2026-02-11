@@ -1,4 +1,4 @@
-"""Builds the presentation deck from markdown templates and project assets."""
+"""Writes deck build notes and scaffold metadata for presentation packaging."""
 
 from __future__ import annotations
 

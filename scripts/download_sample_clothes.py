@@ -1,4 +1,4 @@
-"""Downloads and prepares the sample clothing dataset used by the local demo."""
+"""Validates/extracts the sample clothing dataset into data/sample_clothes for local runs."""
 
 from __future__ import annotations
 

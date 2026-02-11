@@ -32,16 +32,16 @@ Show the home page and explain:
 ## 3) Live Product Discovery (10 min)
 
 1. Run text query from home page.
-2. Open personalized page and show explanation chips on cards.
-3. Use `AI Explain (✨)` on a recommendation.
-4. Add item to cart (`🛒`) and show cart modal updates.
+2. Open personalized page and show ranked recommendations.
+3. Use `Explain` on a recommendation to show query-match reasoning and score bar.
+4. Add item to cart (`Buy`) and show cart modal updates.
 5. Open profile modal and show signal counters (click/cart events).
 
 ## 4) Session AI Features (10 min)
 
-1. Click refine buttons (`party`, `work`, `casual`) and explain session-aware retrieval.
-2. Select an item and run `Complete the look (🧩)`.
-3. Walk through how recommendations are generated from selected item + session intent.
+1. Select an item and run `Suggest` (`Complete the Look`).
+2. Walk through how complementary article types are chosen from the selected anchor item.
+3. Explain hybrid retrieval + business controls used to rank final results.
 
 ## 5) Multimodal and Voice Reliability (5 min)
 
@@ -50,7 +50,13 @@ Show the home page and explain:
    - fallback recorder + backend transcribe when needed
 2. Upload an image and show image-guided recommendations.
 
-## 6) Technical Deep Dive (7 min)
+## 6) Multilingual Walkthrough (7 min)
+
+1. Use the top-right flag selector to switch language (`EN/JA/ZH/ES`).
+2. Show translated navigation, status text, and card actions (`Explain/Suggest/Buy`).
+3. Run a non-English query and show localized recommendation metadata.
+4. Trigger `Suggest` in `ja` or `zh` and confirm response speed remains close to English.
+## 7) Technical Deep Dive (5 min)
 
 Cover pipeline order:
 1. Intent extraction
@@ -66,7 +72,7 @@ Then show data model:
 - cart items
 - shopper events
 
-## 7) Evaluation and Close (3 min)
+## 8) Evaluation and Close (3 min)
 
 Run:
 ```bash

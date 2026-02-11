@@ -990,7 +990,10 @@ function initializeLanguageSelector() {
     return;
   }
   const options = languageOptions()
-    .map((option) => `<option value="${option.code}">${option.flag} ${option.label}</option>`)
+    .map(
+      (option) =>
+        `<option value="${option.code}" title="${option.label}" aria-label="${option.label}">${option.flag}</option>`
+    )
     .join('');
   languageSelect.innerHTML = options;
   languageSelect.value = currentLanguage;

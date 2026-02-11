@@ -1,20 +1,38 @@
-# GlobalMart Fashion Assistant Demo (Cohere)
+# GlobalMart Fashion Assistant (Cohere)
 
-GlobalMart Fashion demo application for Cohere solution walkthroughs.
+Private e-commerce AI assistant demo for GlobalMart Fashion, built with Cohere models for search relevance, reranking, and multimodal discovery.
 
-This implementation is built for a 45-minute technical demo and includes:
-- Phase 1: reliability + UX completion (voice fallback, cart/profile/footer actions, feedback events)
-- Phase 2: retrieval pipeline v2 (intent extraction, dense + lexical retrieval, RRF fusion, Cohere rerank, business controls)
-- Phase 3: demo AI features (`Complete the look`, session refine panel for `party/work/casual`, explanation chips)
-- Phase 4: private-endpoint-ready Cohere config path, reduced sensitive logging behavior, evaluation script, docs/runbook
-- Multilingual portal support (English, Japanese, Chinese Simplified, Spanish) across frontend and API responses
+## Architecture Diagram
 
-## Documentation
+```mermaid
+flowchart LR
+    Browser["Web Client\nHome + Personalized"]
+    Frontend["home.js / personalized.js\nlanguage-aware UI"]
+    API["FastAPI\napp/api_server.py"]
+    Service["OutfitAssistantService\nhybrid retrieval + business rules"]
+    DB["SQLite\nsessions, recs, cart, feedback"]
+    Catalog["Private catalog\nCSV + cached index + local images"]
+    Cohere["Cohere APIs\nChat, Vision, Embed, Rerank"]
 
-- [Documentation Index](./docs/README.md)
-- [Architecture](./docs/ARCHITECTURE.md)
-- [Demo Runbook](./docs/DEMO_RUNBOOK.md)
-- [Troubleshooting Guide](./docs/TROUBLESHOOTING.md)
+    Browser --> Frontend
+    Frontend --> API
+    API --> Service
+    Service --> DB
+    Service --> Catalog
+    Service --> Cohere
+```
+
+For a deeper walkthrough, see [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
+
+## Core Capabilities
+
+- Hybrid retrieval (`lexical + dense + RRF + Cohere rerank`)
+- Natural language search and image-upload matching
+- Voice transcription path with browser-first and backend fallback behavior
+- AI Explain + Suggest (Complete the Look) + Buy actions
+- Cart/profile/footer content backed by real API routes
+- Multilingual UX and API responses (`en`, `ja`, `zh`, `es`)
+- Private-endpoint-ready Cohere configuration path
 
 ## Quickstart
 
@@ -28,24 +46,24 @@ python3 -m venv .venv
 ./.venv/bin/pip install -e .
 ```
 
-### 2) Configure environment
+### 2) Configure
 
 ```bash
 cp .env.template .env
 # Set COHERE_API_KEY in .env
 ```
 
-Optional private deployment endpointing:
-- Set `RN_COHERE_CONFIG_PATH` to a JSON file path.
-- Supported keys in that JSON: `api_key`, `base_url`, `timeout_seconds`, `max_retries`.
+Optional private Cohere endpoint config:
+- Set `RN_COHERE_CONFIG_PATH` to a JSON file.
+- Supported keys: `api_key`, `base_url`, `timeout_seconds`, `max_retries`.
 
-### 3) Download sample data (if missing)
+### 3) Prepare sample data (if needed)
 
 ```bash
 ./.venv/bin/python scripts/download_sample_clothes.py
 ```
 
-### 4) Run app
+### 4) Run
 
 ```bash
 ./scripts/run_api_dev.sh
@@ -54,61 +72,38 @@ Optional private deployment endpointing:
 Port behavior:
 - Default `PORT=8005`
 - Auto-selects next free port in `8005..8009`
-- Exits with a clear message if all ports in range are occupied
+- Exits clearly if all ports in range are occupied
 
-Open the exact URL printed by the script (for example `http://127.0.0.1:8005`).
-
-## Retrieval v2
-
-For text/image recommendations, the service now executes:
-1. Structured intent extraction
-2. Lexical candidate generation
-3. Dense semantic candidate generation (Cohere embeddings)
-4. Candidate fusion with Reciprocal Rank Fusion (RRF)
-5. Cohere rerank
-6. Business controls (gender/usage/season/recency boosts)
-
-## Multilingual Support
-
-- Supported languages: `en`, `ja`, `zh`, `es`
-- Header language selector is available on both `/` and `/personalized`
-- API supports `lang` query/body/form parameter for localized responses
-- Non-English query text is translated to English via Cohere before retrieval (when AI is enabled)
-- Product metadata uses localized display values, while search/ranking remains stable on canonical catalog fields
-
-## API Endpoints
+## API Surface
 
 - `GET /api/health`
 - `GET /api/languages`
+- `GET /api/home-products?limit=24&gender=Women|Men&lang=en|ja|zh|es`
+- `POST /api/search`
+- `POST /api/image-match`
+- `GET /api/personalized/{session_id}?lang=en|ja|zh|es`
+- `POST /api/complete-look`
+- `POST /api/suggest-session`
+- `POST /api/transcribe`
 - `GET /api/profile?shopper_name=...&lang=en|ja|zh|es`
 - `GET /api/cart?shopper_name=...&lang=en|ja|zh|es`
 - `POST /api/cart/add`
 - `POST /api/cart/remove`
 - `POST /api/feedback`
 - `GET /api/content/{slug}?lang=en|ja|zh|es`
-- `GET /api/home-products?limit=24&gender=Women|Men&lang=en|ja|zh|es`
-- `POST /api/search`
-- `POST /api/image-match`
-- `GET /api/personalized/{session_id}?lang=en|ja|zh|es`
-- `POST /api/complete-look`
-- `POST /api/refine-session`
-- `POST /api/check-match` (legacy compatibility)
-- `POST /api/transcribe`
 - `GET /api/image/{product_id}`
 
-## Evaluation Script
+## Scripts
 
-Run before/after retrieval comparison (legacy lexical vs hybrid v2):
+- `scripts/run_api_dev.sh`: starts the FastAPI app with guarded port selection (`8005..8009`) and stale-process cleanup.
+- `scripts/download_sample_clothes.py`: validates or extracts required catalog files into `data/sample_clothes/`.
+- `scripts/evaluate_retrieval.py`: compares lexical baseline vs hybrid retrieval and writes `docs/eval_last_run.json`.
+- `scripts/build_retailnext_assignment_deck.py`: writes deck build notes into `deliverables/`.
+- `scripts/capture_retailnext_screens.js`: helper placeholder for deterministic screenshot capture targets.
 
-```bash
-./.venv/bin/python scripts/evaluate_retrieval.py
-```
+## Documentation
 
-Output JSON is written to:
-- `docs/eval_last_run.json`
-
-## Notes
-
-- Raw uploaded audio/image payloads are not persisted by the app.
-- Voice flow is non-blocking: browser speech path first, recorder + backend transcribe fallback second.
-- If local product image files are missing, the API serves `/static/placeholder-image.svg`.
+- [Documentation Index](./docs/README.md)
+- [Architecture](./docs/ARCHITECTURE.md)
+- [Demo Runbook](./docs/DEMO_RUNBOOK.md)
+- [Troubleshooting Guide](./docs/TROUBLESHOOTING.md)

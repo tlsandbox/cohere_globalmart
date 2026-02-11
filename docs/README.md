@@ -1,6 +1,6 @@
 # Documentation Index
 
-Use this folder for technical explanations, architecture references, and operational runbooks.
+Use this folder for technical architecture, demo execution, and troubleshooting.
 
 ## Documents
 
@@ -12,6 +12,6 @@ Use this folder for technical explanations, architecture references, and operati
 
 ## Recommended Reading Order
 
-1. Read [Architecture](./ARCHITECTURE.md) to understand system boundaries and request flows.
-2. Use [Demo Runbook](./DEMO_RUNBOOK.md) for presentation flow.
-3. Use [Troubleshooting Guide](./TROUBLESHOOTING.md) when debugging local environment issues.
+1. Read [Architecture](./ARCHITECTURE.md) for the system design and API interaction model.
+2. Use [Demo Runbook](./DEMO_RUNBOOK.md) to run the 45-minute demo flow.
+3. Use [Troubleshooting Guide](./TROUBLESHOOTING.md) for local setup/runtime issues.
