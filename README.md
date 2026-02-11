@@ -1,4 +1,4 @@
-# GlobalMart Fashion Assistant (Cohere)
+# GlobalMart Fashion Assistant 
 
 Private e-commerce AI assistant demo for GlobalMart Fashion, built with Cohere models for search relevance, reranking, and multimodal discovery.
 
