@@ -169,6 +169,25 @@ body {
   font-size: 1.05rem;
 }
 
+.language-select {
+  height: 42px;
+  min-width: 80px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0 10px;
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.language-select:hover {
+  border-color: var(--accent);
+}
+
 .top-nav {
   margin-top: 16px;
   border-top: 1px solid rgba(88, 69, 31, 0.2);

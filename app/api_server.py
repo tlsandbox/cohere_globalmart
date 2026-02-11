@@ -24,6 +24,7 @@ class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
     shopper_name: str = "GlobalMart Fashion Shopper"
     top_k: int = Field(default=10, ge=1, le=20)
+    lang: str = "en"
 
 
 class CheckMatchRequest(BaseModel):
@@ -35,11 +36,13 @@ class CartUpdateRequest(BaseModel):
     shopper_name: str = "GlobalMart Fashion Shopper"
     product_id: int = Field(ge=1)
     quantity: int = Field(default=1, ge=1, le=10)
+    lang: str = "en"
 
 
 class CartRemoveRequest(BaseModel):
     shopper_name: str = "GlobalMart Fashion Shopper"
     product_id: int = Field(ge=1)
+    lang: str = "en"
 
 
 class FeedbackRequest(BaseModel):
@@ -54,6 +57,7 @@ class CompleteLookRequest(BaseModel):
     session_id: str
     product_id: int = Field(ge=1)
     top_k: int = Field(default=6, ge=1, le=12)
+    lang: str = "en"
 
 
 class RefineSessionRequest(BaseModel):
@@ -65,6 +69,7 @@ class RefineSessionRequest(BaseModel):
 class SuggestSessionRequest(BaseModel):
     shopper_name: str = "GlobalMart Fashion Shopper"
     product_id: int = Field(ge=1)
+    lang: str = "en"
 
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -113,17 +118,22 @@ def health() -> dict:
     }
 
 
+@app.get("/api/languages")
+def languages() -> dict:
+    return service.supported_languages()
+
+
 @app.get("/api/profile")
-def profile(shopper_name: str = "GlobalMart Fashion Shopper") -> dict:
+def profile(shopper_name: str = "GlobalMart Fashion Shopper", lang: str = "en") -> dict:
     try:
-        return service.get_profile(shopper_name)
+        return service.get_profile(shopper_name, language=lang)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/cart")
-def cart(shopper_name: str = "GlobalMart Fashion Shopper") -> dict:
-    return service.get_cart(shopper_name)
+def cart(shopper_name: str = "GlobalMart Fashion Shopper", lang: str = "en") -> dict:
+    return service.get_cart(shopper_name, language=lang)
 
 
 @app.post("/api/cart/add")
@@ -133,6 +143,7 @@ def cart_add(request: CartUpdateRequest) -> dict:
             shopper_name=request.shopper_name,
             product_id=request.product_id,
             quantity=request.quantity,
+            language=request.lang,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -143,6 +154,7 @@ def cart_remove(request: CartRemoveRequest) -> dict:
     return service.remove_from_cart(
         shopper_name=request.shopper_name,
         product_id=request.product_id,
+        language=request.lang,
     )
 
 
@@ -163,15 +175,15 @@ def feedback(request: FeedbackRequest) -> dict:
 
 
 @app.get("/api/content/{slug}")
-def content(slug: str) -> dict:
+def content(slug: str, lang: str = "en") -> dict:
     try:
-        return service.footer_content(slug)
+        return service.footer_content(slug, language=lang)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/home-products")
-def home_products(limit: int = 24, gender: str | None = None) -> dict:
+def home_products(limit: int = 24, gender: str | None = None, lang: str = "en") -> dict:
     safe_limit = max(6, min(limit, 60))
     normalized_gender = None
     if gender:
@@ -179,10 +191,11 @@ def home_products(limit: int = 24, gender: str | None = None) -> dict:
         if normalized_gender is None:
             raise HTTPException(status_code=400, detail="gender must be one of: Women, Men")
 
-    products = service.home_feed(limit=safe_limit, gender=normalized_gender)
+    products = service.home_feed(limit=safe_limit, gender=normalized_gender, language=lang)
     return {
         "shopper_name": "GlobalMart Fashion Shopper",
         "gender_filter": normalized_gender,
+        "language": lang,
         "products": products,
     }
 
@@ -194,6 +207,7 @@ def search(request: SearchRequest) -> dict:
             query=request.query,
             shopper_name=request.shopper_name,
             top_k=request.top_k,
+            language=request.lang,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -223,6 +237,7 @@ async def image_match(
     image: UploadFile = File(...),
     shopper_name: str = Form(default="GlobalMart Fashion Shopper"),
     top_k: int = Form(default=10),
+    lang: str = Form(default="en"),
 ) -> dict:
     if not image.filename:
         raise HTTPException(status_code=400, detail="Missing image filename.")
@@ -237,6 +252,7 @@ async def image_match(
             image_bytes=payload,
             shopper_name=shopper_name,
             top_k=safe_top_k,
+            language=lang,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -245,9 +261,9 @@ async def image_match(
 
 
 @app.get("/api/personalized/{session_id}")
-def personalized(session_id: str) -> dict:
+def personalized(session_id: str, lang: str = "en") -> dict:
     try:
-        return service.get_personalized(session_id)
+        return service.get_personalized(session_id, language=lang)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -267,6 +283,7 @@ def complete_look(request: CompleteLookRequest) -> dict:
             session_id=request.session_id,
             product_id=request.product_id,
             top_k=request.top_k,
+            language=request.lang,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -292,6 +309,7 @@ def suggest_session(request: SuggestSessionRequest) -> dict:
         return service.create_suggest_session(
             product_id=request.product_id,
             shopper_name=request.shopper_name,
+            language=request.lang,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

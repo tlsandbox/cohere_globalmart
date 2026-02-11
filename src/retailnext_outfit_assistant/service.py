@@ -23,6 +23,7 @@ from retailnext_outfit_assistant.cohere_utils import (
     llm_match_judgement,
     make_client,
     rerank_documents,
+    translate_text,
 )
 from retailnext_outfit_assistant.db import RetailNextDB
 from retailnext_outfit_assistant.retrieval import top_k_cosine
@@ -150,6 +151,246 @@ _FOOTER_CONTENT: dict[str, tuple[str, str]] = {
     ),
 }
 
+_SUPPORTED_LANGUAGES: dict[str, dict[str, str]] = {
+    "en": {"label": "English", "flag": "🇺🇸", "prompt_name": "English"},
+    "ja": {"label": "Japanese", "flag": "🇯🇵", "prompt_name": "Japanese"},
+    "zh": {"label": "Chinese (Simplified)", "flag": "🇨🇳", "prompt_name": "Chinese (Simplified)"},
+    "es": {"label": "Spanish", "flag": "🇪🇸", "prompt_name": "Spanish"},
+}
+
+_LANGUAGE_ALIASES: dict[str, str] = {
+    "en": "en",
+    "english": "en",
+    "ja": "ja",
+    "jp": "ja",
+    "ja-jp": "ja",
+    "japanese": "ja",
+    "zh": "zh",
+    "zh-cn": "zh",
+    "zh-hans": "zh",
+    "chinese": "zh",
+    "chinese-simplified": "zh",
+    "es": "es",
+    "es-es": "es",
+    "spanish": "es",
+}
+
+_TERM_TRANSLATIONS: dict[str, dict[str, str]] = {
+    "ja": {
+        "Men": "メンズ",
+        "Women": "レディース",
+        "Boys": "ボーイズ",
+        "Girls": "ガールズ",
+        "Unisex": "ユニセックス",
+        "Unknown": "不明",
+        "Apparel": "アパレル",
+        "Footwear": "フットウェア",
+        "Accessories": "アクセサリー",
+        "Personal Care": "パーソナルケア",
+        "Sporting Goods": "スポーツ用品",
+        "Free Items": "無料アイテム",
+        "Topwear": "トップス",
+        "Bottomwear": "ボトムス",
+        "Tshirts": "Tシャツ",
+        "Shirts": "シャツ",
+        "Tops": "トップス",
+        "Kurtas": "クルタ",
+        "Dresses": "ドレス",
+        "Jeans": "ジーンズ",
+        "Trousers": "トラウザー",
+        "Shorts": "ショートパンツ",
+        "Track Pants": "トラックパンツ",
+        "Tracksuits": "トラックスーツ",
+        "Jackets": "ジャケット",
+        "Sweatshirts": "スウェットシャツ",
+        "Blazers": "ブレザー",
+        "Leggings": "レギンス",
+        "Shoes": "シューズ",
+        "Casual Shoes": "カジュアルシューズ",
+        "Sports Shoes": "スポーツシューズ",
+        "Formal Shoes": "フォーマルシューズ",
+        "Flip Flops": "ビーチサンダル",
+        "Sandals": "サンダル",
+        "Heels": "ヒール",
+        "Flats": "フラットシューズ",
+        "Casual": "カジュアル",
+        "Formal": "フォーマル",
+        "Sports": "スポーツ",
+        "Ethnic": "エスニック",
+        "Party": "パーティー",
+        "Work": "仕事",
+        "Summer": "夏",
+        "Winter": "冬",
+        "Spring": "春",
+        "Fall": "秋",
+        "All": "通年",
+        "Lifestyle": "ライフスタイル",
+        "Black": "ブラック",
+        "White": "ホワイト",
+        "Blue": "ブルー",
+        "Navy Blue": "ネイビーブルー",
+        "Red": "レッド",
+        "Green": "グリーン",
+        "Yellow": "イエロー",
+        "Pink": "ピンク",
+        "Purple": "パープル",
+        "Brown": "ブラウン",
+        "Grey": "グレー",
+        "Gray": "グレー",
+        "Beige": "ベージュ",
+        "Olive": "オリーブ",
+        "Orange": "オレンジ",
+        "Teal": "ティール",
+        "Maroon": "マルーン",
+        "Gold": "ゴールド",
+        "Silver": "シルバー",
+        "Peach": "ピーチ",
+        "Magenta": "マゼンタ",
+    },
+    "zh": {
+        "Men": "男装",
+        "Women": "女装",
+        "Boys": "男童",
+        "Girls": "女童",
+        "Unisex": "中性",
+        "Unknown": "未知",
+        "Apparel": "服饰",
+        "Footwear": "鞋类",
+        "Accessories": "配饰",
+        "Personal Care": "个护",
+        "Sporting Goods": "运动用品",
+        "Free Items": "赠品",
+        "Topwear": "上装",
+        "Bottomwear": "下装",
+        "Tshirts": "T恤",
+        "Shirts": "衬衫",
+        "Tops": "上衣",
+        "Kurtas": "库尔塔上衣",
+        "Dresses": "连衣裙",
+        "Jeans": "牛仔裤",
+        "Trousers": "长裤",
+        "Shorts": "短裤",
+        "Track Pants": "运动长裤",
+        "Tracksuits": "运动套装",
+        "Jackets": "夹克",
+        "Sweatshirts": "卫衣",
+        "Blazers": "西装外套",
+        "Leggings": "打底裤",
+        "Shoes": "鞋子",
+        "Casual Shoes": "休闲鞋",
+        "Sports Shoes": "运动鞋",
+        "Formal Shoes": "正装鞋",
+        "Flip Flops": "人字拖",
+        "Sandals": "凉鞋",
+        "Heels": "高跟鞋",
+        "Flats": "平底鞋",
+        "Casual": "休闲",
+        "Formal": "正式",
+        "Sports": "运动",
+        "Ethnic": "民族风",
+        "Party": "派对",
+        "Work": "通勤",
+        "Summer": "夏季",
+        "Winter": "冬季",
+        "Spring": "春季",
+        "Fall": "秋季",
+        "All": "全年",
+        "Lifestyle": "生活方式",
+        "Black": "黑色",
+        "White": "白色",
+        "Blue": "蓝色",
+        "Navy Blue": "海军蓝",
+        "Red": "红色",
+        "Green": "绿色",
+        "Yellow": "黄色",
+        "Pink": "粉色",
+        "Purple": "紫色",
+        "Brown": "棕色",
+        "Grey": "灰色",
+        "Gray": "灰色",
+        "Beige": "米色",
+        "Olive": "橄榄绿",
+        "Orange": "橙色",
+        "Teal": "蓝绿色",
+        "Maroon": "栗色",
+        "Gold": "金色",
+        "Silver": "银色",
+        "Peach": "桃色",
+        "Magenta": "品红",
+    },
+    "es": {
+        "Men": "Hombre",
+        "Women": "Mujer",
+        "Boys": "Niños",
+        "Girls": "Niñas",
+        "Unisex": "Unisex",
+        "Unknown": "Desconocido",
+        "Apparel": "Ropa",
+        "Footwear": "Calzado",
+        "Accessories": "Accesorios",
+        "Personal Care": "Cuidado personal",
+        "Sporting Goods": "Artículos deportivos",
+        "Free Items": "Artículos gratis",
+        "Topwear": "Prendas superiores",
+        "Bottomwear": "Prendas inferiores",
+        "Tshirts": "Camisetas",
+        "Shirts": "Camisas",
+        "Tops": "Tops",
+        "Kurtas": "Kurtas",
+        "Dresses": "Vestidos",
+        "Jeans": "Vaqueros",
+        "Trousers": "Pantalones",
+        "Shorts": "Pantalones cortos",
+        "Track Pants": "Pantalones deportivos",
+        "Tracksuits": "Conjuntos deportivos",
+        "Jackets": "Chaquetas",
+        "Sweatshirts": "Sudaderas",
+        "Blazers": "Blazers",
+        "Leggings": "Leggings",
+        "Shoes": "Zapatos",
+        "Casual Shoes": "Zapatos casuales",
+        "Sports Shoes": "Zapatillas deportivas",
+        "Formal Shoes": "Zapatos formales",
+        "Flip Flops": "Chanclas",
+        "Sandals": "Sandalias",
+        "Heels": "Tacones",
+        "Flats": "Zapatos planos",
+        "Casual": "Casual",
+        "Formal": "Formal",
+        "Sports": "Deporte",
+        "Ethnic": "Étnico",
+        "Party": "Fiesta",
+        "Work": "Trabajo",
+        "Summer": "Verano",
+        "Winter": "Invierno",
+        "Spring": "Primavera",
+        "Fall": "Otoño",
+        "All": "Todo el año",
+        "Lifestyle": "Estilo de vida",
+        "Black": "Negro",
+        "White": "Blanco",
+        "Blue": "Azul",
+        "Navy Blue": "Azul marino",
+        "Red": "Rojo",
+        "Green": "Verde",
+        "Yellow": "Amarillo",
+        "Pink": "Rosa",
+        "Purple": "Morado",
+        "Brown": "Marrón",
+        "Grey": "Gris",
+        "Gray": "Gris",
+        "Beige": "Beige",
+        "Olive": "Oliva",
+        "Orange": "Naranja",
+        "Teal": "Verde azulado",
+        "Maroon": "Granate",
+        "Gold": "Dorado",
+        "Silver": "Plateado",
+        "Peach": "Melocotón",
+        "Magenta": "Magenta",
+    },
+}
+
 
 class OutfitAssistantService:
     def __init__(self, root_dir: Path | None = None) -> None:
@@ -167,6 +408,7 @@ class OutfitAssistantService:
         self.image_timeout_seconds = self._env_timeout("RN_AI_IMAGE_TIMEOUT_SECONDS", 50.0)
         self.match_timeout_seconds = self._env_timeout("RN_AI_MATCH_TIMEOUT_SECONDS", 20.0)
         self.request_timeout_seconds = self._env_timeout("RN_AI_REQUEST_TIMEOUT_SECONDS", 20.0)
+        self.translation_timeout_seconds = self._env_timeout("RN_AI_TRANSLATION_TIMEOUT_SECONDS", 10.0)
         self.dense_build_timeout_seconds = self._env_timeout("RN_DENSE_BUILD_TIMEOUT_SECONDS", 120.0)
         self.embed_batch_size = self._env_int("RN_EMBED_BATCH_SIZE", 96)
         self.prefer_newest = self._env_bool("RN_PREFER_NEWEST", True)
@@ -194,6 +436,7 @@ class OutfitAssistantService:
         self._dense_signature = self._catalog_signature()
 
         self._session_explanations: dict[str, dict[int, list[str]]] = {}
+        self._translation_cache: dict[tuple[str, str], str] = {}
 
         self.db.upsert_catalog(self.index.items, self.image_dir)
         self.db.ensure_shopper_profile(self.default_shopper_name)
@@ -249,6 +492,133 @@ class OutfitAssistantService:
         if raw is None or not raw.strip():
             return default
         return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+    def _normalize_language(self, language: str | None) -> str:
+        raw = str(language or "en").strip().lower()
+        if raw in _SUPPORTED_LANGUAGES:
+            return raw
+        return _LANGUAGE_ALIASES.get(raw, "en")
+
+    def supported_languages(self) -> dict[str, Any]:
+        return {
+            "default": "en",
+            "languages": [
+                {
+                    "code": code,
+                    "label": meta["label"],
+                    "flag": meta["flag"],
+                }
+                for code, meta in _SUPPORTED_LANGUAGES.items()
+            ],
+        }
+
+    def _translate_term(self, text: str, language: str) -> str:
+        if not text:
+            return text
+        normalized_language = self._normalize_language(language)
+        if normalized_language == "en":
+            return text
+        return _TERM_TRANSLATIONS.get(normalized_language, {}).get(text, text)
+
+    def _translate_text_cached(
+        self,
+        *,
+        text: str,
+        language: str,
+        allow_model: bool = True,
+    ) -> str:
+        raw = str(text or "").strip()
+        if not raw:
+            return raw
+
+        normalized_language = self._normalize_language(language)
+        if normalized_language == "en":
+            return raw
+
+        exact_term = self._translate_term(raw, normalized_language)
+        if exact_term != raw:
+            return exact_term
+
+        cache_key = (normalized_language, raw)
+        cached = self._translation_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        if not allow_model or not self.ai_enabled:
+            self._translation_cache[cache_key] = raw
+            return raw
+
+        prompt_name = _SUPPORTED_LANGUAGES.get(normalized_language, {}).get("prompt_name", "English")
+        try:
+            client = self._ensure_client()
+            translated = self._run_with_timeout(
+                "Translation request",
+                lambda: translate_text(
+                    client=client,
+                    text=raw,
+                    target_language=prompt_name,
+                    model=self.cfg.translate_model,
+                ),
+                self.translation_timeout_seconds,
+            )
+            out = str(translated or "").strip() or raw
+        except Exception:
+            out = raw
+
+        self._translation_cache[cache_key] = out
+        return out
+
+    def _translate_to_english(self, text: str, source_language: str) -> str:
+        raw = str(text or "").strip()
+        if not raw:
+            return raw
+
+        normalized_source = self._normalize_language(source_language)
+        if normalized_source == "en" or not self.ai_enabled:
+            return raw
+
+        cache_key = ("en", f"{normalized_source}:{raw}")
+        cached = self._translation_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            client = self._ensure_client()
+            translated = self._run_with_timeout(
+                "Query translation request",
+                lambda: translate_text(
+                    client=client,
+                    text=raw,
+                    target_language="English",
+                    model=self.cfg.translate_model,
+                ),
+                self.translation_timeout_seconds,
+            )
+            out = str(translated or "").strip() or raw
+        except Exception:
+            out = raw
+
+        self._translation_cache[cache_key] = out
+        return out
+
+    def _localize_product(self, payload: dict[str, Any], language: str) -> dict[str, Any]:
+        normalized_language = self._normalize_language(language)
+        if normalized_language == "en":
+            return payload
+
+        localized = dict(payload)
+        localized["gender"] = self._translate_term(str(payload.get("gender") or ""), normalized_language)
+        localized["master_category"] = self._translate_term(str(payload.get("master_category") or ""), normalized_language)
+        localized["sub_category"] = self._translate_term(str(payload.get("sub_category") or ""), normalized_language)
+        localized["article_type"] = self._translate_term(str(payload.get("article_type") or ""), normalized_language)
+        localized["base_colour"] = self._translate_text_cached(
+            text=str(payload.get("base_colour") or ""),
+            language=normalized_language,
+            allow_model=False,
+        )
+        localized["season"] = self._translate_term(str(payload.get("season") or ""), normalized_language)
+        localized["usage"] = self._translate_term(str(payload.get("usage") or ""), normalized_language)
+        return localized
 
     @staticmethod
     def _remaining_timeout(deadline: float) -> float:
@@ -886,8 +1256,8 @@ class OutfitAssistantService:
                 break
         return out
 
-    def _build_public_product(self, row: dict[str, Any]) -> dict[str, Any]:
-        return {
+    def _build_public_product(self, row: dict[str, Any], *, language: str = "en") -> dict[str, Any]:
+        payload = {
             "id": int(row["id"]),
             "name": row["name"],
             "gender": row["gender"],
@@ -900,6 +1270,7 @@ class OutfitAssistantService:
             "usage": row["usage"],
             "image_url": f"/api/image/{int(row['id'])}",
         }
+        return self._localize_product(payload, language)
 
     def _store_session_results(
         self,
@@ -912,6 +1283,7 @@ class OutfitAssistantService:
         reasons: dict[int, list[str]],
         assistant_note: str,
         ai_powered: bool,
+        language: str = "en",
     ) -> dict[str, Any]:
         session_id = self.db.create_session(
             shopper_name=shopper_name,
@@ -922,23 +1294,32 @@ class OutfitAssistantService:
         self.db.store_recommendations(session_id, ranked)
         self._session_explanations[session_id] = reasons
 
-        payload = self.get_personalized(session_id)
+        payload = self.get_personalized(session_id, language=language)
         payload["assistant_note"] = assistant_note
         payload["ai_powered"] = ai_powered
         return payload
 
-    def home_feed(self, *, limit: int = 24, gender: str | None = None) -> list[dict[str, Any]]:
+    def home_feed(
+        self,
+        *,
+        limit: int = 24,
+        gender: str | None = None,
+        language: str = "en",
+    ) -> list[dict[str, Any]]:
         rows = self.db.list_random_products(limit, gender=gender)
-        return [self._build_public_product(row) for row in rows]
+        normalized_language = self._normalize_language(language)
+        return [self._build_public_product(row, language=normalized_language) for row in rows]
 
     def create_suggest_session(
         self,
         *,
         product_id: int,
         shopper_name: str = "GlobalMart Fashion Shopper",
+        language: str = "en",
     ) -> dict[str, Any]:
         safe_shopper = shopper_name.strip() or self.default_shopper_name
         self.db.ensure_shopper_profile(safe_shopper)
+        normalized_language = self._normalize_language(language)
 
         anchor = self.db.get_product(int(product_id))
         if not anchor:
@@ -964,8 +1345,11 @@ class OutfitAssistantService:
         )
         return {
             "session_id": session_id,
-            "anchor_product": self._build_public_product(anchor),
-            "assistant_note": "Quick suggest session created from the selected catalog item.",
+            "anchor_product": self._build_public_product(anchor, language=normalized_language),
+            "assistant_note": self._translate_text_cached(
+                text="Quick suggest session created from the selected catalog item.",
+                language=normalized_language,
+            ),
         }
 
     def _ensure_transcriber(self):
@@ -1019,6 +1403,7 @@ class OutfitAssistantService:
         query: str,
         shopper_name: str = "GlobalMart Fashion Shopper",
         top_k: int = 10,
+        language: str = "en",
     ) -> dict[str, Any]:
         cleaned = query.strip()
         if not cleaned:
@@ -1026,12 +1411,16 @@ class OutfitAssistantService:
 
         safe_shopper = shopper_name.strip() or self.default_shopper_name
         self.db.ensure_shopper_profile(safe_shopper)
+        normalized_language = self._normalize_language(language)
+        retrieval_query = cleaned
+        if normalized_language != "en":
+            retrieval_query = self._translate_to_english(cleaned, normalized_language)
 
         deadline = time.monotonic() + self.search_timeout_seconds if self.ai_enabled else None
         try:
-            intent = self._extract_intent(cleaned, image_summary=None, deadline=deadline)
+            intent = self._extract_intent(retrieval_query, image_summary=None, deadline=deadline)
             ranked, ai_powered, reasons = self._retrieve_ranked(
-                query_text=cleaned,
+                query_text=retrieval_query,
                 intent=intent,
                 top_k=top_k,
                 deadline=deadline,
@@ -1055,6 +1444,7 @@ class OutfitAssistantService:
             note = "Search ranking is unavailable right now. Showing fallback recommendations so you can continue."
             ai_powered = False
 
+        localized_note = self._translate_text_cached(text=note, language=normalized_language)
         return self._store_session_results(
             shopper_name=safe_shopper,
             source="natural-language-query-search",
@@ -1062,8 +1452,9 @@ class OutfitAssistantService:
             image_summary=None,
             ranked=ranked,
             reasons=reasons,
-            assistant_note=note,
+            assistant_note=localized_note,
             ai_powered=ai_powered,
+            language=normalized_language,
         )
 
     def search_by_image(
@@ -1072,9 +1463,11 @@ class OutfitAssistantService:
         image_bytes: bytes,
         shopper_name: str = "GlobalMart Fashion Shopper",
         top_k: int = 10,
+        language: str = "en",
     ) -> dict[str, Any]:
         safe_shopper = shopper_name.strip() or self.default_shopper_name
         self.db.ensure_shopper_profile(safe_shopper)
+        normalized_language = self._normalize_language(language)
 
         ai_powered = False
         if self.ai_enabled:
@@ -1158,8 +1551,9 @@ class OutfitAssistantService:
             image_summary=analysis,
             ranked=ranked,
             reasons=reasons,
-            assistant_note=note,
+            assistant_note=self._translate_text_cached(text=note, language=normalized_language),
             ai_powered=ai_powered,
+            language=normalized_language,
         )
         payload["image_analysis"] = analysis
         return payload
@@ -1183,27 +1577,37 @@ class OutfitAssistantService:
             chips = ["Catalog relevance"]
         return chips[:4]
 
-    def get_personalized(self, session_id: str) -> dict[str, Any]:
+    def get_personalized(self, session_id: str, *, language: str = "en") -> dict[str, Any]:
         session = self.db.get_session(session_id)
         if not session:
             raise KeyError("Recommendation session not found.")
+        normalized_language = self._normalize_language(language)
 
         rows = self.db.get_recommendations(session_id)
         explanations = self._session_explanations.get(session_id, {})
 
         products: list[dict[str, Any]] = []
         for row in rows:
-            product = self._build_public_product(row)
+            product = self._build_public_product(row, language=normalized_language)
             product_id = int(row["id"])
             product["rank"] = int(row["rank_position"])
             product["score"] = float(row["score"])
             chips = explanations.get(product_id) or self._fallback_recommendation_chips(session, row)
             product["explanation_chips"] = chips
-            product["explanation"] = " | ".join(chips)
+            product["explanation"] = self._translate_text_cached(
+                text=" | ".join(chips),
+                language=normalized_language,
+            )
             if row.get("match_verdict"):
                 product["match"] = {
-                    "verdict": row["match_verdict"],
-                    "rationale": row["match_rationale"],
+                    "verdict": self._translate_text_cached(
+                        text=str(row["match_verdict"]),
+                        language=normalized_language,
+                    ),
+                    "rationale": self._translate_text_cached(
+                        text=str(row["match_rationale"] or ""),
+                        language=normalized_language,
+                    ),
                     "confidence": row["match_confidence"],
                 }
             products.append(product)
@@ -1211,6 +1615,7 @@ class OutfitAssistantService:
         return {
             "session": session,
             "recommendations": products,
+            "language": normalized_language,
         }
 
     def _match_score(self, intent: dict[str, Any], product: dict[str, Any]) -> tuple[str, str, float]:
@@ -1340,31 +1745,53 @@ class OutfitAssistantService:
             favorite_article_type=favorite_article_type,
         )
 
-    def get_profile(self, shopper_name: str = "GlobalMart Fashion Shopper") -> dict[str, Any]:
+    def get_profile(
+        self,
+        shopper_name: str = "GlobalMart Fashion Shopper",
+        *,
+        language: str = "en",
+    ) -> dict[str, Any]:
         safe_shopper = shopper_name.strip() or self.default_shopper_name
         self.db.ensure_shopper_profile(safe_shopper)
         self._refresh_profile_preferences(safe_shopper)
+        normalized_language = self._normalize_language(language)
 
         profile = self.db.get_profile(safe_shopper)
         if not profile:
             raise KeyError("Shopper profile not found.")
 
-        cart = self.get_cart(safe_shopper)
+        cart = self.get_cart(safe_shopper, language=normalized_language)
         return {
             "shopper_name": profile["shopper_name"],
             "membership_tier": profile["membership_tier"],
-            "preferred_gender": profile.get("preferred_gender") or "Unspecified",
-            "favorite_color": profile.get("favorite_color") or "Unspecified",
-            "favorite_article_type": profile.get("favorite_article_type") or "Unspecified",
+            "preferred_gender": self._translate_term(
+                str(profile.get("preferred_gender") or "Unspecified"),
+                normalized_language,
+            ),
+            "favorite_color": self._translate_text_cached(
+                text=str(profile.get("favorite_color") or "Unspecified"),
+                language=normalized_language,
+                allow_model=False,
+            ),
+            "favorite_article_type": self._translate_term(
+                str(profile.get("favorite_article_type") or "Unspecified"),
+                normalized_language,
+            ),
             "click_events": int(profile.get("click_events") or 0),
             "cart_add_events": int(profile.get("cart_add_events") or 0),
             "cart_items": int(cart.get("total_items") or 0),
             "updated_at": profile.get("updated_at"),
         }
 
-    def get_cart(self, shopper_name: str = "GlobalMart Fashion Shopper") -> dict[str, Any]:
+    def get_cart(
+        self,
+        shopper_name: str = "GlobalMart Fashion Shopper",
+        *,
+        language: str = "en",
+    ) -> dict[str, Any]:
         safe_shopper = shopper_name.strip() or self.default_shopper_name
         self.db.ensure_shopper_profile(safe_shopper)
+        normalized_language = self._normalize_language(language)
         rows = self.db.get_cart_items(safe_shopper)
 
         items: list[dict[str, Any]] = []
@@ -1372,7 +1799,7 @@ class OutfitAssistantService:
         for row in rows:
             quantity = int(row.get("quantity") or 0)
             total_items += quantity
-            item = self._build_public_product(row)
+            item = self._build_public_product(row, language=normalized_language)
             item["quantity"] = quantity
             items.append(item)
 
@@ -1380,6 +1807,7 @@ class OutfitAssistantService:
             "shopper_name": safe_shopper,
             "total_items": total_items,
             "items": items,
+            "language": normalized_language,
         }
 
     def add_to_cart(
@@ -1388,6 +1816,7 @@ class OutfitAssistantService:
         shopper_name: str = "GlobalMart Fashion Shopper",
         product_id: int,
         quantity: int = 1,
+        language: str = "en",
     ) -> dict[str, Any]:
         safe_shopper = shopper_name.strip() or self.default_shopper_name
         self.db.ensure_shopper_profile(safe_shopper)
@@ -1405,18 +1834,19 @@ class OutfitAssistantService:
             product_id=int(product_id),
             event_value=str(safe_quantity),
         )
-        return self.get_cart(safe_shopper)
+        return self.get_cart(safe_shopper, language=language)
 
     def remove_from_cart(
         self,
         *,
         shopper_name: str = "GlobalMart Fashion Shopper",
         product_id: int,
+        language: str = "en",
     ) -> dict[str, Any]:
         safe_shopper = shopper_name.strip() or self.default_shopper_name
         self.db.ensure_shopper_profile(safe_shopper)
         self.db.remove_cart_item(shopper_name=safe_shopper, product_id=int(product_id))
-        return self.get_cart(safe_shopper)
+        return self.get_cart(safe_shopper, language=language)
 
     def record_feedback(
         self,
@@ -1450,12 +1880,17 @@ class OutfitAssistantService:
 
         return {"status": "ok", "event_type": safe_event}
 
-    def footer_content(self, slug: str) -> dict[str, Any]:
+    def footer_content(self, slug: str, *, language: str = "en") -> dict[str, Any]:
         key = slug.strip().lower()
         if key not in _FOOTER_CONTENT:
             raise KeyError("Content page not found.")
         title, body = _FOOTER_CONTENT[key]
-        return {"slug": key, "title": title, "body": body}
+        normalized_language = self._normalize_language(language)
+        return {
+            "slug": key,
+            "title": self._translate_text_cached(text=title, language=normalized_language),
+            "body": self._translate_text_cached(text=body, language=normalized_language),
+        }
 
     def _complete_look_query(self, anchor: dict[str, Any], intent: dict[str, Any]) -> str:
         article_norm = self._normalize_text(anchor.get("article_type") or "")
@@ -1697,10 +2132,12 @@ class OutfitAssistantService:
         session_id: str,
         product_id: int,
         top_k: int = 6,
+        language: str = "en",
     ) -> dict[str, Any]:
         session = self.db.get_session(session_id)
         if not session:
             raise KeyError("Recommendation session not found.")
+        normalized_language = self._normalize_language(language)
 
         anchor = self.db.get_product(product_id)
         if not anchor:
@@ -1777,15 +2214,21 @@ class OutfitAssistantService:
         recs: list[dict[str, Any]] = []
         for rank, (row, score) in enumerate(selected, start=1):
             pid = int(row["id"])
-            product = self._build_public_product(row)
+            product = self._build_public_product(row, language=normalized_language)
             chips = reasons.get(pid, ["Catalog relevance"])
             product["rank"] = rank
             product["score"] = score
-            product["explanation_chips"] = chips
-            product["explanation"] = self._complete_look_reason(
-                anchor=anchor,
-                candidate=row,
-                intent=intent,
+            product["explanation_chips"] = [
+                self._translate_text_cached(text=str(chip), language=normalized_language, allow_model=False)
+                for chip in chips
+            ]
+            product["explanation"] = self._translate_text_cached(
+                text=self._complete_look_reason(
+                    anchor=anchor,
+                    candidate=row,
+                    intent=intent,
+                ),
+                language=normalized_language,
             )
             recs.append(product)
 
@@ -1811,10 +2254,11 @@ class OutfitAssistantService:
 
         return {
             "session_id": session_id,
-            "anchor_product": self._build_public_product(anchor),
-            "assistant_note": note,
+            "anchor_product": self._build_public_product(anchor, language=normalized_language),
+            "assistant_note": self._translate_text_cached(text=note, language=normalized_language),
             "ai_powered": ai_powered,
             "recommendations": recs,
+            "language": normalized_language,
         }
 
     def refine_session(

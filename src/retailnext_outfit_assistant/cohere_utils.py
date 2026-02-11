@@ -42,6 +42,7 @@ class CohereConfig:
     rerank_model: str
     embed_model: str
     intent_model: str
+    translate_model: str
 
     @classmethod
     def from_env(cls) -> "CohereConfig":
@@ -51,6 +52,10 @@ class CohereConfig:
             rerank_model=os.getenv("RN_RERANK_MODEL", "rerank-v4.0-fast"),
             embed_model=os.getenv("RN_EMBED_MODEL", "embed-v4.0"),
             intent_model=os.getenv("RN_INTENT_MODEL", os.getenv("RN_CHAT_MODEL", "command-r-08-2024")),
+            translate_model=os.getenv(
+                "RN_TRANSLATE_MODEL",
+                os.getenv("RN_INTENT_MODEL", os.getenv("RN_CHAT_MODEL", "command-r-08-2024")),
+            ),
         )
 
 
@@ -469,3 +474,22 @@ def llm_match_judgement(
         "rationale": str(parsed.get("rationale") or "Partial alignment with shopper intent.").strip(),
         "confidence": max(0.0, min(1.0, confidence_value)),
     }
+
+
+def translate_text(
+    client: CohereClient,
+    *,
+    text: str,
+    target_language: str,
+    model: str,
+) -> str:
+    prompt = (
+        "You are a concise ecommerce translator.\n"
+        f"Translate the text to {target_language}.\n"
+        "Rules:\n"
+        "- Keep brand names and product IDs unchanged.\n"
+        "- Preserve meaning and tone.\n"
+        "- Return plain text only.\n"
+        f"Text: {text}"
+    )
+    return client.chat_text(prompt=prompt, model=model, temperature=0.1).strip()

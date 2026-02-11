@@ -11,6 +11,7 @@ Core components:
 - Local product catalog (`sample_styles_with_embeddings.csv`) with cached index artifacts
 - Cohere APIs for intent parsing, embeddings, reranking, vision analysis, and optional match judgement
 - Frontend flows for text search, voice query, image match, refine-session, and complete-the-look
+- Multilingual layer for UI phrases + localized API payloads (`en`, `ja`, `zh`, `es`)
 
 ## Component Diagram
 
@@ -23,6 +24,7 @@ flowchart LR
     DB["SQLite\ndata/retailnext_demo.db"]
     Catalog["Catalog metadata\nlocal cache + dense index"]
     Cohere["Cohere APIs\nChat + Vision + Embed + Rerank"]
+    I18N["Language layer\nUI i18n + API localization"]
 
     Browser --> JS
     JS --> API
@@ -30,6 +32,8 @@ flowchart LR
     Service --> DB
     Service --> Catalog
     Service --> Cohere
+    JS --> I18N
+    Service --> I18N
 ```
 
 ## Retrieval Pipeline v2 (Cohere-first)
@@ -47,6 +51,14 @@ For recommendation generation:
 7. Return recommendations with explanation chips.
 
 ## Primary Runtime Flows
+
+### Multilingual Request Flow
+
+1. Frontend chooses a language from the header flag selector.
+2. Frontend appends `lang` to API calls and page URLs.
+3. Service localizes display metadata and narrative fields.
+4. For non-English text search, service translates query to English (Cohere) before hybrid retrieval.
+5. Recommendations are returned in localized display format while ranking logic remains consistent.
 
 ### Text Search
 

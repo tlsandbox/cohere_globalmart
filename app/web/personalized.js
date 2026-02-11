@@ -1,5 +1,15 @@
 // Personalized page controller: renders recommendations, AI explain, and complete-the-look suggestions.
 
+import {
+  initialLanguage,
+  languageOptions,
+  normalizeLanguage,
+  persistLanguage,
+  t,
+  withLangHref,
+  withLangPath,
+} from '/static/i18n.js';
+
 const statusText = document.getElementById('status-text');
 const assistantNote = document.getElementById('assistant-note');
 const grid = document.getElementById('recommendation-grid');
@@ -18,6 +28,7 @@ const imageInput = document.getElementById('image-input');
 
 const cartButton = document.getElementById('cart-button');
 const profileButton = document.getElementById('profile-button');
+const languageSelect = document.getElementById('language-select');
 const footerLinks = Array.from(document.querySelectorAll('.site-footer a[data-content-slug]'));
 const profileModal = document.getElementById('profile-modal');
 const profileContent = document.getElementById('profile-content');
@@ -33,6 +44,7 @@ const closeInfoModalButton = document.getElementById('close-info-modal');
 const SHOPPER_NAME = 'GlobalMart Fashion Shopper';
 const params = new URLSearchParams(window.location.search);
 let currentSessionId = params.get('session');
+let currentLanguage = initialLanguage(params);
 let suggestOnlyMode = params.get('focus') === 'suggest';
 const completeLookAnchorParam = Number(params.get('complete_anchor'));
 let pendingCompleteLookAnchor = Number.isInteger(completeLookAnchorParam) && completeLookAnchorParam > 0
@@ -54,6 +66,127 @@ let currentSessionQuery = '';
 function setStatus(message, isError = false) {
   statusText.textContent = message;
   statusText.classList.toggle('error', isError);
+}
+
+function updateUrlForLanguage() {
+  const url = new URL(window.location.href);
+  url.searchParams.set('lang', currentLanguage);
+  window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+}
+
+function localizeFooter() {
+  const headingMap = ['company', 'assistance', 'legal', 'follow_us'];
+  document.querySelectorAll('.site-footer h4').forEach((heading, idx) => {
+    const key = headingMap[idx];
+    if (key) {
+      heading.textContent = t(currentLanguage, key);
+    }
+  });
+  const linkMap = {
+    about: 'about',
+    careers: 'careers',
+    stores: 'stores',
+    'customer-service': 'customer_service',
+    delivery: 'delivery',
+    returns: 'returns',
+    terms: 'terms',
+    privacy: 'privacy',
+    cookies: 'cookies',
+    instagram: 'instagram',
+    youtube: 'youtube',
+    linkedin: 'linkedin',
+  };
+  footerLinks.forEach((link) => {
+    const key = linkMap[link.dataset.contentSlug || ''];
+    if (key) {
+      link.textContent = t(currentLanguage, key);
+    }
+  });
+}
+
+function applyStaticLanguage() {
+  document.documentElement.lang = currentLanguage;
+  const setText = (id, key) => {
+    const node = document.getElementById(id);
+    if (node) {
+      node.textContent = t(currentLanguage, key);
+    }
+  };
+
+  setText('brand-eyebrow', 'brand_eyebrow');
+  setText('brand-title', 'brand_title');
+  setText('nav-home', 'nav_home');
+  setText('nav-women', 'nav_women');
+  setText('nav-men', 'nav_men');
+  setText('nav-personalized', 'nav_personalized');
+  setText('search-submit', 'find_items');
+  setText('personalized-hero-title', 'personalized_hero_title');
+  setText('recommended-title', 'recommended_items');
+  setText('card-actions-hint', 'card_actions_hint');
+  setText('complete-look-title', 'complete_look_title');
+  setText('upload-modal-title', 'upload_title');
+  setText('upload-modal-desc', 'upload_desc');
+  setText('upload-label', 'choose_image');
+  setText('upload-submit', 'upload_and_match');
+  setText('profile-modal-title', 'profile');
+  setText('cart-modal-title', 'your_cart');
+
+  searchInput.placeholder = t(currentLanguage, 'search_placeholder_personalized');
+  voiceButton.title = t(currentLanguage, 'voice_title');
+  voiceButton.setAttribute('aria-label', t(currentLanguage, 'voice_title'));
+  cameraButton.title = t(currentLanguage, 'image_upload_match');
+  cameraButton.setAttribute('aria-label', t(currentLanguage, 'image_upload_match'));
+  cartButton.title = t(currentLanguage, 'cart');
+  cartButton.setAttribute('aria-label', t(currentLanguage, 'cart'));
+  profileButton.title = t(currentLanguage, 'profile');
+  profileButton.setAttribute('aria-label', t(currentLanguage, 'profile'));
+  closeModalButton.textContent = t(currentLanguage, 'cancel');
+  closeProfileModalButton.textContent = t(currentLanguage, 'close');
+  closeCartModalButton.textContent = t(currentLanguage, 'close');
+  closeInfoModalButton.textContent = t(currentLanguage, 'close');
+
+  const navHome = document.getElementById('nav-home');
+  const navWomen = document.getElementById('nav-women');
+  const navMen = document.getElementById('nav-men');
+  const navPersonalized = document.getElementById('nav-personalized');
+  if (navHome) {
+    navHome.setAttribute('href', withLangHref('/', currentLanguage));
+  }
+  if (navWomen) {
+    navWomen.setAttribute('href', withLangHref('/?gender=Women', currentLanguage));
+  }
+  if (navMen) {
+    navMen.setAttribute('href', withLangHref('/?gender=Men', currentLanguage));
+  }
+  if (navPersonalized) {
+    const current = new URL(window.location.href);
+    const sessionId = current.searchParams.get('session');
+    const base = sessionId ? `/personalized?session=${encodeURIComponent(sessionId)}` : '/personalized';
+    navPersonalized.setAttribute('href', withLangHref(base, currentLanguage));
+  }
+
+  localizeFooter();
+}
+
+function initializeLanguageSelector() {
+  if (!languageSelect) {
+    return;
+  }
+  languageSelect.innerHTML = languageOptions()
+    .map((option) => `<option value="${option.code}">${option.flag} ${option.label}</option>`)
+    .join('');
+  languageSelect.value = currentLanguage;
+  languageSelect.addEventListener('change', () => {
+    const nextLanguage = normalizeLanguage(languageSelect.value);
+    if (nextLanguage === currentLanguage) {
+      return;
+    }
+    currentLanguage = nextLanguage;
+    persistLanguage(currentLanguage);
+    applyStaticLanguage();
+    updateUrlForLanguage();
+    loadPersonalized(currentSessionId);
+  });
 }
 
 function escapeHtml(value) {
@@ -93,15 +226,19 @@ function setVoiceButtonState(isRecording) {
     return;
   }
   voiceButton.classList.toggle('is-recording', isRecording);
-  voiceButton.setAttribute(
-    'aria-label',
-    isRecording ? 'Stop recording and transcribe' : 'Voice to text'
-  );
-  voiceButton.title = isRecording ? 'Stop recording and transcribe' : 'Voice to text';
+  const resting = t(currentLanguage, 'voice_title');
+  const active = `${resting} (Stop)`;
+  voiceButton.setAttribute('aria-label', isRecording ? active : resting);
+  voiceButton.title = isRecording ? active : resting;
 }
 
 function speechRecognitionCtor() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function speechLocale() {
+  const selected = languageOptions().find((option) => option.code === currentLanguage);
+  return selected?.locale || navigator.language || 'en-US';
 }
 
 function canUseRecorderFallback() {
@@ -147,7 +284,7 @@ function startBrowserSpeechRecognition() {
   }
 
   speechRecognition = new Recognition();
-  speechRecognition.lang = navigator.language || 'en-US';
+  speechRecognition.lang = speechLocale();
   speechRecognition.interimResults = true;
   speechRecognition.continuous = false;
 
@@ -556,12 +693,12 @@ function aiExplainModel(product, safeChips) {
 }
 
 function buildSuggestActionLabel() {
-  return 'Suggest';
+  return t(currentLanguage, 'suggest');
 }
 
 async function sendFeedback(eventType, productId = null, eventValue = null) {
   try {
-    await fetchJsonWithTimeout('/api/feedback', {
+    await fetchJsonWithTimeout(withLangPath('/api/feedback', currentLanguage), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -582,18 +719,18 @@ async function sendFeedback(eventType, productId = null, eventValue = null) {
 async function openProfileModal() {
   try {
     const { response, payload } = await fetchJsonWithTimeout(
-      `/api/profile?shopper_name=${encodeURIComponent(SHOPPER_NAME)}`
+      withLangPath(`/api/profile?shopper_name=${encodeURIComponent(SHOPPER_NAME)}`, currentLanguage)
     );
     if (!response.ok) {
       throw new Error(payload?.detail || 'Could not load profile.');
     }
     profileContent.innerHTML = `
-      <p><strong>Name:</strong> ${escapeHtml(payload.shopper_name)}</p>
+      <p><strong>${escapeHtml(t(currentLanguage, 'profile'))}:</strong> ${escapeHtml(payload.shopper_name)}</p>
       <p><strong>Tier:</strong> ${escapeHtml(payload.membership_tier)}</p>
       <p><strong>Preferred gender:</strong> ${escapeHtml(payload.preferred_gender)}</p>
       <p><strong>Favorite color:</strong> ${escapeHtml(payload.favorite_color)}</p>
       <p><strong>Favorite article:</strong> ${escapeHtml(payload.favorite_article_type)}</p>
-      <p><strong>Cart items:</strong> ${Number(payload.cart_items || 0)}</p>
+      <p><strong>${escapeHtml(t(currentLanguage, 'cart'))}:</strong> ${Number(payload.cart_items || 0)}</p>
       <p class="product-desc">Signals collected: clicks ${Number(payload.click_events || 0)}, cart adds ${Number(
         payload.cart_add_events || 0
       )}.</p>
@@ -610,7 +747,7 @@ function closeProfileModal() {
 
 function renderCart(items) {
   if (!items?.length) {
-    cartContent.innerHTML = '<p class="product-desc">Your cart is empty.</p>';
+    cartContent.innerHTML = `<p class="product-desc">${escapeHtml(t(currentLanguage, 'empty_cart'))}</p>`;
     return;
   }
   cartContent.innerHTML = `
@@ -622,9 +759,9 @@ function renderCart(items) {
               <img src="${item.image_url}" alt="${escapeHtml(item.name)}" loading="lazy" />
               <div>
                 <strong>${escapeHtml(item.name)}</strong>
-                <p class="product-desc">Qty: ${Number(item.quantity || 1)}</p>
+                <p class="product-desc">${escapeHtml(t(currentLanguage, 'quantity'))}: ${Number(item.quantity || 1)}</p>
               </div>
-              <button class="secondary-button cart-remove" data-product-id="${Number(item.id)}" type="button">Remove</button>
+              <button class="secondary-button cart-remove" data-product-id="${Number(item.id)}" type="button">${escapeHtml(t(currentLanguage, 'remove'))}</button>
             </div>
           `
         )
@@ -636,7 +773,7 @@ function renderCart(items) {
     button.addEventListener('click', async () => {
       const productId = Number(button.dataset.productId);
       try {
-        await fetchJsonWithTimeout('/api/cart/remove', {
+        await fetchJsonWithTimeout(withLangPath('/api/cart/remove', currentLanguage), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -644,6 +781,7 @@ function renderCart(items) {
           body: JSON.stringify({
             shopper_name: SHOPPER_NAME,
             product_id: productId,
+            lang: currentLanguage,
           }),
         });
         await openCartModal();
@@ -657,7 +795,7 @@ function renderCart(items) {
 async function openCartModal() {
   try {
     const { response, payload } = await fetchJsonWithTimeout(
-      `/api/cart?shopper_name=${encodeURIComponent(SHOPPER_NAME)}`
+      withLangPath(`/api/cart?shopper_name=${encodeURIComponent(SHOPPER_NAME)}`, currentLanguage)
     );
     if (!response.ok) {
       throw new Error(payload?.detail || 'Could not load cart.');
@@ -675,7 +813,9 @@ function closeCartModal() {
 
 async function openInfoModal(slug) {
   try {
-    const { response, payload } = await fetchJsonWithTimeout(`/api/content/${encodeURIComponent(slug)}`);
+    const { response, payload } = await fetchJsonWithTimeout(
+      withLangPath(`/api/content/${encodeURIComponent(slug)}`, currentLanguage)
+    );
     if (!response.ok) {
       throw new Error(payload?.detail || 'No information available.');
     }
@@ -755,9 +895,9 @@ function productCard(product) {
         product.sub_category
       )} | Season: ${escapeHtml(product.season || 'All')} | Year: ${escapeHtml(product.year || 'n/a')}</p>
       <div class="card-feature-actions">
-        <button class="feature-action explain-button" type="button" title="Explain why this item matches your query">Explain</button>
-        <button class="feature-action complete-look-button" type="button" title="Suggest items to complete your look">${buildSuggestActionLabel()}</button>
-        <button class="feature-action add-cart-button" type="button" title="Buy this item">Buy</button>
+        <button class="feature-action explain-button" type="button" title="${escapeHtml(t(currentLanguage, 'explain'))}">${escapeHtml(t(currentLanguage, 'explain'))}</button>
+        <button class="feature-action complete-look-button" type="button" title="${escapeHtml(t(currentLanguage, 'suggest'))}">${buildSuggestActionLabel()}</button>
+        <button class="feature-action add-cart-button" type="button" title="${escapeHtml(t(currentLanguage, 'buy'))}">${escapeHtml(t(currentLanguage, 'buy'))}</button>
       </div>
     </div>
   `;
@@ -814,7 +954,7 @@ function productCard(product) {
     addCartButton.disabled = true;
     try {
       await addToCart(Number(product.id));
-      setStatus('Added to cart.');
+      setStatus(t(currentLanguage, 'status_added_cart'));
     } catch (error) {
       setStatus(error.message, true);
     } finally {
@@ -848,7 +988,7 @@ function completeLookCard(product) {
 }
 
 async function addToCart(productId) {
-  const { response, payload } = await fetchJsonWithTimeout('/api/cart/add', {
+  const { response, payload } = await fetchJsonWithTimeout(withLangPath('/api/cart/add', currentLanguage), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -857,6 +997,7 @@ async function addToCart(productId) {
       shopper_name: SHOPPER_NAME,
       product_id: productId,
       quantity: 1,
+      lang: currentLanguage,
     }),
   });
   if (!response.ok) {
@@ -869,7 +1010,7 @@ function renderRecommendations(payload) {
   grid.innerHTML = '';
 
   if (!recommendations.length) {
-    assistantNote.textContent = 'Try searching or uploading something first to generate your personalized items.';
+    assistantNote.textContent = t(currentLanguage, 'personalized_hero_note');
     setStatus('No recommendations available for this session.', true);
     return;
   }
@@ -882,7 +1023,7 @@ function renderRecommendations(payload) {
     grid.appendChild(productCard(product));
   });
 
-  setStatus('Use Explain, Suggest, or Buy on each item.');
+  setStatus(t(currentLanguage, 'status_use_actions'));
 }
 
 async function loadPersonalized(sessionId) {
@@ -890,13 +1031,12 @@ async function loadPersonalized(sessionId) {
     completeLookGrid.innerHTML = '';
   }
   if (completeLookNote) {
-    completeLookNote.textContent =
-      'Select a recommendation and click Suggest to generate compatible outfit additions.';
+    completeLookNote.textContent = t(currentLanguage, 'complete_look_note');
   }
 
   if (!sessionId) {
     grid.innerHTML = '';
-    assistantNote.textContent = 'Try searching or uploading something first to generate your personalized items.';
+    assistantNote.textContent = t(currentLanguage, 'personalized_hero_note');
     setStatus('No recommendation session yet. Start from Home with search or image upload.', true);
     return;
   }
@@ -907,17 +1047,17 @@ async function loadPersonalized(sessionId) {
     currentSessionQuery = '';
     const productId = pendingCompleteLookAnchor;
     pendingCompleteLookAnchor = null;
-    window.history.replaceState({}, '', `/personalized?session=${encodeURIComponent(sessionId)}`);
+    window.history.replaceState({}, '', `/personalized?session=${encodeURIComponent(sessionId)}&lang=${encodeURIComponent(currentLanguage)}`);
     await runCompleteTheLook(productId);
     suggestOnlyMode = false;
     return;
   }
 
-  setStatus('Loading your personalized recommendations...');
+  setStatus(t(currentLanguage, 'status_loading_personalized'));
 
   try {
     const { response, payload } = await fetchJsonWithTimeout(
-      `/api/personalized/${encodeURIComponent(sessionId)}`,
+      withLangPath(`/api/personalized/${encodeURIComponent(sessionId)}`, currentLanguage),
       {},
       30000
     );
@@ -930,7 +1070,7 @@ async function loadPersonalized(sessionId) {
     if (pendingCompleteLookAnchor) {
       const productId = pendingCompleteLookAnchor;
       pendingCompleteLookAnchor = null;
-      window.history.replaceState({}, '', `/personalized?session=${encodeURIComponent(currentSessionId || sessionId)}`);
+      window.history.replaceState({}, '', `/personalized?session=${encodeURIComponent(currentSessionId || sessionId)}&lang=${encodeURIComponent(currentLanguage)}`);
       await runCompleteTheLook(productId);
     }
   } catch (error) {
@@ -946,9 +1086,9 @@ async function runCompleteTheLook(productId) {
     throw new Error('Invalid product selection for complete-the-look.');
   }
 
-  setStatus('Generating complete-the-look recommendations...');
+  setStatus(t(currentLanguage, 'status_generate_suggest'));
 
-  const { response, payload } = await fetchJsonWithTimeout('/api/complete-look', {
+  const { response, payload } = await fetchJsonWithTimeout(withLangPath('/api/complete-look', currentLanguage), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -957,6 +1097,7 @@ async function runCompleteTheLook(productId) {
       session_id: currentSessionId,
       product_id: Number(productId),
       top_k: 6,
+      lang: currentLanguage,
     }),
   });
   if (!response.ok) {
@@ -981,21 +1122,21 @@ async function runCompleteTheLook(productId) {
 
   await sendFeedback('complete_look', Number(productId), 'personalized_card');
   completeLookSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  setStatus('Suggest results are ready below.');
+  setStatus(t(currentLanguage, 'status_suggest_ready'));
 }
 
 async function runSearch(event) {
   event.preventDefault();
   const query = searchInput.value.trim();
   if (!query) {
-    setStatus('Please enter a search query first.', true);
+    setStatus(t(currentLanguage, 'status_no_query'), true);
     return;
   }
 
-  setStatus('Running natural-language-query-search...');
+  setStatus(t(currentLanguage, 'status_run_search'));
 
   try {
-    const { response, payload } = await fetchJsonWithTimeout('/api/search', {
+    const { response, payload } = await fetchJsonWithTimeout(withLangPath('/api/search', currentLanguage), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1004,6 +1145,7 @@ async function runSearch(event) {
         query,
         shopper_name: SHOPPER_NAME,
         top_k: 10,
+        lang: currentLanguage,
       }),
     });
     if (!response.ok) {
@@ -1017,7 +1159,7 @@ async function runSearch(event) {
 
     suggestOnlyMode = false;
     pendingCompleteLookAnchor = null;
-    window.history.replaceState({}, '', `/personalized?session=${encodeURIComponent(currentSessionId)}`);
+    window.history.replaceState({}, '', `/personalized?session=${encodeURIComponent(currentSessionId)}&lang=${encodeURIComponent(currentLanguage)}`);
     renderRecommendations(payload);
   } catch (error) {
     setStatus(error.message, true);
@@ -1035,7 +1177,7 @@ function closeUploadModal() {
 async function runImageMatch(event) {
   event.preventDefault();
   if (!imageInput.files?.length) {
-    setStatus('Please choose an image before uploading.', true);
+    setStatus(t(currentLanguage, 'choose_image'), true);
     return;
   }
 
@@ -1045,17 +1187,18 @@ async function runImageMatch(event) {
   formData.append('image', uploadFile);
   formData.append('shopper_name', SHOPPER_NAME);
   formData.append('top_k', '10');
+  formData.append('lang', currentLanguage);
 
   closeUploadModal();
   if (uploadFile !== originalFile) {
-    setStatus('Image optimized. Running image-upload-match flow...');
+    setStatus(t(currentLanguage, 'status_image_optimized'));
   } else {
-    setStatus('Running image-upload-match flow...');
+    setStatus(t(currentLanguage, 'status_image_running'));
   }
 
   try {
     const { response, payload } = await fetchJsonWithTimeout(
-      '/api/image-match',
+      withLangPath('/api/image-match', currentLanguage),
       {
         method: 'POST',
         body: formData,
@@ -1073,7 +1216,7 @@ async function runImageMatch(event) {
 
     suggestOnlyMode = false;
     pendingCompleteLookAnchor = null;
-    window.history.replaceState({}, '', `/personalized?session=${encodeURIComponent(currentSessionId)}`);
+    window.history.replaceState({}, '', `/personalized?session=${encodeURIComponent(currentSessionId)}&lang=${encodeURIComponent(currentLanguage)}`);
     renderRecommendations(payload);
   } catch (error) {
     setStatus(error.message, true);
@@ -1124,4 +1267,8 @@ registerDialogOutsideClose(profileModal, closeProfileModal);
 registerDialogOutsideClose(cartModal, closeCartModal);
 registerDialogOutsideClose(infoModal, closeInfoModal);
 
+persistLanguage(currentLanguage);
+initializeLanguageSelector();
+applyStaticLanguage();
+updateUrlForLanguage();
 loadPersonalized(currentSessionId);

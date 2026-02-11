@@ -7,6 +7,7 @@ This implementation is built for a 45-minute technical demo and includes:
 - Phase 2: retrieval pipeline v2 (intent extraction, dense + lexical retrieval, RRF fusion, Cohere rerank, business controls)
 - Phase 3: demo AI features (`Complete the look`, session refine panel for `party/work/casual`, explanation chips)
 - Phase 4: private-endpoint-ready Cohere config path, reduced sensitive logging behavior, evaluation script, docs/runbook
+- Multilingual portal support (English, Japanese, Chinese Simplified, Spanish) across frontend and API responses
 
 ## Documentation
 
@@ -67,19 +68,28 @@ For text/image recommendations, the service now executes:
 5. Cohere rerank
 6. Business controls (gender/usage/season/recency boosts)
 
+## Multilingual Support
+
+- Supported languages: `en`, `ja`, `zh`, `es`
+- Header language selector is available on both `/` and `/personalized`
+- API supports `lang` query/body/form parameter for localized responses
+- Non-English query text is translated to English via Cohere before retrieval (when AI is enabled)
+- Product metadata uses localized display values, while search/ranking remains stable on canonical catalog fields
+
 ## API Endpoints
 
 - `GET /api/health`
-- `GET /api/profile?shopper_name=...`
-- `GET /api/cart?shopper_name=...`
+- `GET /api/languages`
+- `GET /api/profile?shopper_name=...&lang=en|ja|zh|es`
+- `GET /api/cart?shopper_name=...&lang=en|ja|zh|es`
 - `POST /api/cart/add`
 - `POST /api/cart/remove`
 - `POST /api/feedback`
-- `GET /api/content/{slug}`
-- `GET /api/home-products?limit=24&gender=Women|Men`
+- `GET /api/content/{slug}?lang=en|ja|zh|es`
+- `GET /api/home-products?limit=24&gender=Women|Men&lang=en|ja|zh|es`
 - `POST /api/search`
 - `POST /api/image-match`
-- `GET /api/personalized/{session_id}`
+- `GET /api/personalized/{session_id}?lang=en|ja|zh|es`
 - `POST /api/complete-look`
 - `POST /api/refine-session`
 - `POST /api/check-match` (legacy compatibility)

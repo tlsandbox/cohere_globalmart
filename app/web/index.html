@@ -12,8 +12,8 @@
 
     <header class="site-header">
       <div class="brand-block">
-        <p class="brand-eyebrow">GlobalMart Fashion</p>
-        <h1 class="brand-title">Outfit Assistant</h1>
+        <p id="brand-eyebrow" class="brand-eyebrow">GlobalMart Fashion</p>
+        <h1 id="brand-title" class="brand-title">Outfit Assistant</h1>
       </div>
 
       <form id="search-form" class="search-shell">
@@ -34,7 +34,7 @@
         >
           <span aria-hidden="true">&#127908;</span>
         </button>
-        <button type="submit">Find Items</button>
+        <button id="search-submit" type="submit">Find Items</button>
       </form>
 
       <div class="header-actions">
@@ -44,6 +44,12 @@
         <button id="cart-button" class="icon-button" type="button" title="Cart" aria-label="Cart">
           <span class="icon">&#128722;</span>
         </button>
+        <select id="language-select" class="language-select" title="Language" aria-label="Language">
+          <option value="en">&#127482;&#127480; English</option>
+          <option value="ja">&#127471;&#127477; 日本語</option>
+          <option value="zh">&#127464;&#127475; 中文</option>
+          <option value="es">&#127466;&#127480; Español</option>
+        </select>
         <button id="profile-button" class="icon-button" type="button" title="Profile" aria-label="Profile">
           <span class="icon">&#128100;</span>
         </button>
@@ -52,16 +58,16 @@
 
     <nav class="top-nav">
       <a id="nav-home" class="active" href="/">Home</a>
-      <a data-gender="Women" href="/?gender=Women">Women</a>
-      <a data-gender="Men" href="/?gender=Men">Men</a>
-      <a href="/personalized">Your Personalized Item</a>
+      <a id="nav-women" data-gender="Women" href="/?gender=Women">Women</a>
+      <a id="nav-men" data-gender="Men" href="/?gender=Men">Men</a>
+      <a id="nav-personalized" href="/personalized">Your Personalized Item</a>
     </nav>
 
     <main class="main-content">
       <section class="hero">
         <div>
-          <h2>AI-guided shopping for your next purchase</h2>
-          <p>
+          <h2 id="hero-title-home">AI-guided shopping for your next purchase</h2>
+          <p id="hero-description">
             Use natural-language search or upload an image. GlobalMart Fashion AI powered by Cohere finds similar,
             updated styles from private catalog data.
           </p>
@@ -70,7 +76,7 @@
 
       <section>
         <div class="section-head">
-          <h3>Suggested For You</h3>
+          <h3 id="section-title-home">Suggested For You</h3>
           <button id="refresh-button" class="ghost-button" type="button">Refresh Feed</button>
         </div>
         <div id="status-text" class="status-text"></div>
@@ -107,13 +113,13 @@
 
     <dialog id="upload-modal" class="upload-modal">
       <form id="upload-form" method="dialog" class="upload-form">
-        <h3>Image Upload Match</h3>
-        <p>Upload a JPG/PNG image and Outfit Assistant AI will recommend 10 similar items.</p>
-        <label for="image-input">Choose image</label>
+        <h3 id="upload-modal-title">Image Upload Match</h3>
+        <p id="upload-modal-desc">Upload a JPG/PNG image and Outfit Assistant AI will recommend 10 similar items.</p>
+        <label id="upload-label" for="image-input">Choose image</label>
         <input id="image-input" name="image" type="file" accept=".jpg,.jpeg,.png" required />
         <div class="upload-actions">
           <button type="button" id="close-modal" class="ghost-button">Cancel</button>
-          <button type="submit">Upload and Match</button>
+          <button id="upload-submit" type="submit">Upload and Match</button>
         </div>
       </form>
     </dialog>
@@ -121,7 +127,7 @@
     <dialog id="profile-modal" class="upload-modal">
       <div class="upload-form">
         <div class="match-modal-head">
-          <h3>Profile</h3>
+          <h3 id="profile-modal-title">Profile</h3>
           <button type="button" id="close-profile-modal" class="ghost-button">Close</button>
         </div>
         <div id="profile-content"></div>
@@ -131,7 +137,7 @@
     <dialog id="cart-modal" class="upload-modal">
       <div class="upload-form">
         <div class="match-modal-head">
-          <h3>Your Cart</h3>
+          <h3 id="cart-modal-title">Your Cart</h3>
           <button type="button" id="close-cart-modal" class="ghost-button">Close</button>
         </div>
         <div id="cart-content"></div>
