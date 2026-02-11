@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Home entry page for GlobalMart Fashion Outfit Assistant demo. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -40,10 +41,10 @@
         <button id="camera-button" class="icon-button" type="button" title="Image Upload Match" aria-label="Image Upload Match">
           <span class="icon">&#128247;</span>
         </button>
-        <button class="icon-button" type="button" title="Cart" aria-label="Cart">
+        <button id="cart-button" class="icon-button" type="button" title="Cart" aria-label="Cart">
           <span class="icon">&#128722;</span>
         </button>
-        <button class="icon-button" type="button" title="Profile" aria-label="Profile">
+        <button id="profile-button" class="icon-button" type="button" title="Profile" aria-label="Profile">
           <span class="icon">&#128100;</span>
         </button>
       </div>
@@ -80,27 +81,27 @@
     <footer class="site-footer">
       <div>
         <h4>Company</h4>
-        <a href="#">About GlobalMart Fashion</a>
-        <a href="#">Careers</a>
-        <a href="#">Stores</a>
+        <a href="#" data-content-slug="about">About GlobalMart Fashion</a>
+        <a href="#" data-content-slug="careers">Careers</a>
+        <a href="#" data-content-slug="stores">Stores</a>
       </div>
       <div>
         <h4>Assistance</h4>
-        <a href="#">Customer Service</a>
-        <a href="#">Delivery</a>
-        <a href="#">Returns</a>
+        <a href="#" data-content-slug="customer-service">Customer Service</a>
+        <a href="#" data-content-slug="delivery">Delivery</a>
+        <a href="#" data-content-slug="returns">Returns</a>
       </div>
       <div>
         <h4>Legal</h4>
-        <a href="#">Terms and Conditions</a>
-        <a href="#">Privacy Notice</a>
-        <a href="#">Cookie Settings</a>
+        <a href="#" data-content-slug="terms">Terms and Conditions</a>
+        <a href="#" data-content-slug="privacy">Privacy Notice</a>
+        <a href="#" data-content-slug="cookies">Cookie Settings</a>
       </div>
       <div>
         <h4>Follow Us</h4>
-        <a href="#">Instagram</a>
-        <a href="#">YouTube</a>
-        <a href="#">LinkedIn</a>
+        <a href="#" data-content-slug="instagram">Instagram</a>
+        <a href="#" data-content-slug="youtube">YouTube</a>
+        <a href="#" data-content-slug="linkedin">LinkedIn</a>
       </div>
     </footer>
 
@@ -115,6 +116,36 @@
           <button type="submit">Upload and Match</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="profile-modal" class="upload-modal">
+      <div class="upload-form">
+        <div class="match-modal-head">
+          <h3>Profile</h3>
+          <button type="button" id="close-profile-modal" class="ghost-button">Close</button>
+        </div>
+        <div id="profile-content"></div>
+      </div>
+    </dialog>
+
+    <dialog id="cart-modal" class="upload-modal">
+      <div class="upload-form">
+        <div class="match-modal-head">
+          <h3>Your Cart</h3>
+          <button type="button" id="close-cart-modal" class="ghost-button">Close</button>
+        </div>
+        <div id="cart-content"></div>
+      </div>
+    </dialog>
+
+    <dialog id="info-modal" class="upload-modal">
+      <div class="upload-form">
+        <div class="match-modal-head">
+          <h3 id="info-modal-title">Info</h3>
+          <button type="button" id="close-info-modal" class="ghost-button">Close</button>
+        </div>
+        <div id="info-modal-content"></div>
+      </div>
     </dialog>
 
     <script type="module" src="/static/home.js"></script>

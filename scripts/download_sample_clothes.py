@@ -1,3 +1,5 @@
+"""Downloads and prepares the sample clothing dataset used by the local demo."""
+
 from __future__ import annotations
 
 import argparse

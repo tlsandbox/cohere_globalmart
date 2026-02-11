@@ -1,3 +1,5 @@
+"""Vector retrieval primitives used by the hybrid recommendation pipeline."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -27,4 +29,3 @@ def top_k_cosine(
     idx = np.argpartition(-scores, k - 1)[:k]
     idx = idx[np.argsort(-scores[idx])]
     return idx, scores[idx]
-

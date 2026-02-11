@@ -1,3 +1,5 @@
+"""FastAPI entrypoint exposing GlobalMart Fashion demo APIs and static web routes."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,7 +22,7 @@ from retailnext_outfit_assistant.service import OutfitAssistantService
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
-    shopper_name: str = "Bob"
+    shopper_name: str = "GlobalMart Fashion Shopper"
     top_k: int = Field(default=10, ge=1, le=20)
 
 
@@ -29,10 +31,46 @@ class CheckMatchRequest(BaseModel):
     product_id: int
 
 
+class CartUpdateRequest(BaseModel):
+    shopper_name: str = "GlobalMart Fashion Shopper"
+    product_id: int = Field(ge=1)
+    quantity: int = Field(default=1, ge=1, le=10)
+
+
+class CartRemoveRequest(BaseModel):
+    shopper_name: str = "GlobalMart Fashion Shopper"
+    product_id: int = Field(ge=1)
+
+
+class FeedbackRequest(BaseModel):
+    shopper_name: str = "GlobalMart Fashion Shopper"
+    event_type: str
+    session_id: str | None = None
+    product_id: int | None = None
+    event_value: str | None = None
+
+
+class CompleteLookRequest(BaseModel):
+    session_id: str
+    product_id: int = Field(ge=1)
+    top_k: int = Field(default=6, ge=1, le=12)
+
+
+class RefineSessionRequest(BaseModel):
+    session_id: str
+    refinement: str = Field(min_length=3)
+    top_k: int = Field(default=10, ge=1, le=20)
+
+
+class SuggestSessionRequest(BaseModel):
+    shopper_name: str = "GlobalMart Fashion Shopper"
+    product_id: int = Field(ge=1)
+
+
 WEB_DIR = Path(__file__).resolve().parent / "web"
 SUPPORTED_HOME_GENDERS = {"women": "Women", "men": "Men"}
 
-app = FastAPI(title="GlobalMart Fashion Assistant Demo", version="2.0.0")
+app = FastAPI(title="GlobalMart Fashion Assistant Demo", version="3.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -76,12 +114,60 @@ def health() -> dict:
 
 
 @app.get("/api/profile")
-def profile() -> dict:
-    return {
-        "shopper_name": "Bob",
-        "membership_tier": "GlobalMart Fashion Plus",
-        "cart_items": 0,
-    }
+def profile(shopper_name: str = "GlobalMart Fashion Shopper") -> dict:
+    try:
+        return service.get_profile(shopper_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/cart")
+def cart(shopper_name: str = "GlobalMart Fashion Shopper") -> dict:
+    return service.get_cart(shopper_name)
+
+
+@app.post("/api/cart/add")
+def cart_add(request: CartUpdateRequest) -> dict:
+    try:
+        return service.add_to_cart(
+            shopper_name=request.shopper_name,
+            product_id=request.product_id,
+            quantity=request.quantity,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/cart/remove")
+def cart_remove(request: CartRemoveRequest) -> dict:
+    return service.remove_from_cart(
+        shopper_name=request.shopper_name,
+        product_id=request.product_id,
+    )
+
+
+@app.post("/api/feedback")
+def feedback(request: FeedbackRequest) -> dict:
+    try:
+        return service.record_feedback(
+            shopper_name=request.shopper_name,
+            event_type=request.event_type,
+            session_id=request.session_id,
+            product_id=request.product_id,
+            event_value=request.event_value,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/content/{slug}")
+def content(slug: str) -> dict:
+    try:
+        return service.footer_content(slug)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/home-products")
@@ -135,7 +221,7 @@ async def transcribe(audio: UploadFile = File(...)) -> dict:
 @app.post("/api/image-match")
 async def image_match(
     image: UploadFile = File(...),
-    shopper_name: str = Form(default="Bob"),
+    shopper_name: str = Form(default="GlobalMart Fashion Shopper"),
     top_k: int = Form(default=10),
 ) -> dict:
     if not image.filename:
@@ -170,6 +256,43 @@ def personalized(session_id: str) -> dict:
 def check_match(request: CheckMatchRequest) -> dict:
     try:
         return service.check_match(session_id=request.session_id, product_id=request.product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/complete-look")
+def complete_look(request: CompleteLookRequest) -> dict:
+    try:
+        return service.complete_the_look(
+            session_id=request.session_id,
+            product_id=request.product_id,
+            top_k=request.top_k,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/refine-session")
+def refine_session(request: RefineSessionRequest) -> dict:
+    try:
+        return service.refine_session(
+            session_id=request.session_id,
+            refinement=request.refinement,
+            top_k=request.top_k,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/suggest-session")
+def suggest_session(request: SuggestSessionRequest) -> dict:
+    try:
+        return service.create_suggest_session(
+            product_id=request.product_id,
+            shopper_name=request.shopper_name,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

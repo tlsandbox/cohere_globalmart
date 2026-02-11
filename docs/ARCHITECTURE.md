@@ -2,17 +2,15 @@
 
 ## System Overview
 
-GlobalMart Fashion Assistant is a single FastAPI service that serves both:
-
-- Frontend pages (`/` and `/personalized`)
+GlobalMart Fashion Assistant is a single FastAPI service that serves:
+- Frontend pages (`/`, `/personalized`)
 - API routes (`/api/*`)
 
-The application uses:
-
-- SQLite for sessions, recommendation storage, and match checks
-- Local catalog metadata loaded from `sample_styles_with_embeddings.csv`
-- Cohere APIs for reranking, vision analysis, and optional match judgement
-- Heuristic fallback logic for graceful degradation when AI requests fail
+Core components:
+- SQLite for sessions, recommendation history, profiles, carts, and shopper feedback
+- Local product catalog (`sample_styles_with_embeddings.csv`) with cached index artifacts
+- Cohere APIs for intent parsing, embeddings, reranking, vision analysis, and optional match judgement
+- Frontend flows for text search, voice query, image match, refine-session, and complete-the-look
 
 ## Component Diagram
 
@@ -23,8 +21,8 @@ flowchart LR
     API["FastAPI\napp/api_server.py"]
     Service["OutfitAssistantService\nservice.py"]
     DB["SQLite\ndata/retailnext_demo.db"]
-    Catalog["Catalog metadata\nlocal index/cache"]
-    Cohere["Cohere APIs\nRerank + Vision + Chat"]
+    Catalog["Catalog metadata\nlocal cache + dense index"]
+    Cohere["Cohere APIs\nChat + Vision + Embed + Rerank"]
 
     Browser --> JS
     JS --> API
@@ -34,34 +32,51 @@ flowchart LR
     Service --> Cohere
 ```
 
-## Main Runtime Flows
+## Retrieval Pipeline v2 (Cohere-first)
 
-### Natural Language Search
+For recommendation generation:
+1. Parse shopper intent (heuristic + optional Cohere structured intent extraction).
+2. Generate lexical candidates from local metadata.
+3. Generate dense candidates from Cohere embeddings + cosine similarity.
+4. Fuse candidate lists with Reciprocal Rank Fusion (RRF).
+5. Rerank fused list with Cohere rerank.
+6. Apply business controls:
+   - gender alignment
+   - article/usage/season preference boosts
+   - optional recency boost by product year
+7. Return recommendations with explanation chips.
 
-1. Frontend posts `/api/search` with query text.
-2. Service creates lexical candidates from local catalog metadata.
-3. Service calls Cohere rerank to order candidates.
-4. Session and recommendation rows are persisted in SQLite.
-5. Frontend loads `/api/personalized/{session_id}`.
+## Primary Runtime Flows
 
-### Image Upload Match
+### Text Search
 
-1. Frontend uploads image to `/api/image-match`.
-2. Service sends image + prompt to Cohere vision model.
-3. Vision output yields structured fields and search queries.
-4. Retrieval/rerank returns ranked recommendations.
-5. Session + recommendations are persisted and returned.
+1. Frontend posts `/api/search`.
+2. Service runs retrieval v2 and stores session + ranked items.
+3. Frontend loads `/api/personalized/{session_id}`.
 
-### Check Your Match
+### Image Match
 
-1. Frontend posts `/api/check-match` with `session_id` and `product_id`.
-2. Service computes deterministic heuristic breakdown by signals.
-3. If AI is available, Cohere chat adds verdict/rationale refinement.
-4. Match result is stored in DB and shown inline + in modal.
+1. Frontend uploads to `/api/image-match`.
+2. Cohere vision extracts image attributes + candidate queries.
+3. Service runs retrieval v2 and persists session.
+4. Personalized recommendations are returned with explanations.
 
-## Reliability Design
+### Session Refine
 
-- Request timeouts are enforced with configurable `RN_AI_*_TIMEOUT_SECONDS` values.
-- If Cohere calls fail or timeout, service falls back to deterministic behavior.
-- Dev runner supports port range `8005..8009` to avoid local collisions.
-- Frontend uses same-origin API calls to prevent split-port fetch failures.
+1. Frontend posts `/api/refine-session` with refinement (`party`, `work`, `casual`).
+2. Service creates a refined query from the prior session context.
+3. Retrieval v2 runs again and a new session is stored.
+
+### Complete the Look
+
+1. Frontend posts `/api/complete-look` for a selected recommendation.
+2. Service builds a complementary query and excludes the anchor item.
+3. Returns additional compatible recommendations + explanation chips.
+
+## Reliability and Security Notes
+
+- Voice path uses browser speech first, then recorder-to-backend fallback.
+- Uploaded voice blobs are written to temporary files only for transcription and deleted immediately.
+- Sensitive payloads are not persisted in logs.
+- Cohere base URL can be set directly (`COHERE_API_BASE_URL`) or via private config JSON (`RN_COHERE_CONFIG_PATH`).
+- Dev launcher enforces/rotates ports in range `8005..8009`.

@@ -30,3 +30,4 @@ dist/
 .coverage
 .pytest_cache/
 .mypy_cache/
+docs/eval_last_run.json

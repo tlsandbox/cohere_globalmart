@@ -1,3 +1,5 @@
+"""Builds the presentation deck from markdown templates and project assets."""
+
 from __future__ import annotations
 
 from pathlib import Path

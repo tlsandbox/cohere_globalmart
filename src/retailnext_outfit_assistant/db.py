@@ -1,3 +1,5 @@
+"""SQLite access layer for catalog items, sessions, recommendations, cart, and feedback."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -82,8 +84,92 @@ class RetailNextDB:
                     FOREIGN KEY (session_id) REFERENCES recommendation_sessions(session_id) ON DELETE CASCADE,
                     FOREIGN KEY (product_id) REFERENCES catalog_products(id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS shopper_profiles (
+                    shopper_name TEXT PRIMARY KEY,
+                    membership_tier TEXT NOT NULL,
+                    preferred_gender TEXT,
+                    favorite_color TEXT,
+                    favorite_article_type TEXT,
+                    click_events INTEGER NOT NULL DEFAULT 0,
+                    cart_add_events INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS cart_items (
+                    shopper_name TEXT NOT NULL,
+                    product_id INTEGER NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    added_at TEXT NOT NULL,
+                    PRIMARY KEY (shopper_name, product_id),
+                    FOREIGN KEY (product_id) REFERENCES catalog_products(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_cart_items_shopper ON cart_items(shopper_name);
+
+                CREATE TABLE IF NOT EXISTS shopper_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    shopper_name TEXT NOT NULL,
+                    session_id TEXT,
+                    product_id INTEGER,
+                    event_type TEXT NOT NULL,
+                    event_value TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (product_id) REFERENCES catalog_products(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_shopper_events_name ON shopper_events(shopper_name);
+                CREATE INDEX IF NOT EXISTS idx_shopper_events_type ON shopper_events(event_type);
                 """
             )
+
+            self._ensure_column(
+                conn,
+                "shopper_profiles",
+                "preferred_gender",
+                "TEXT DEFAULT 'Unspecified'",
+            )
+            self._ensure_column(
+                conn,
+                "shopper_profiles",
+                "favorite_color",
+                "TEXT DEFAULT 'Unspecified'",
+            )
+            self._ensure_column(
+                conn,
+                "shopper_profiles",
+                "favorite_article_type",
+                "TEXT DEFAULT 'Unspecified'",
+            )
+            self._ensure_column(
+                conn,
+                "shopper_profiles",
+                "click_events",
+                "INTEGER NOT NULL DEFAULT 0",
+            )
+            self._ensure_column(
+                conn,
+                "shopper_profiles",
+                "cart_add_events",
+                "INTEGER NOT NULL DEFAULT 0",
+            )
+
+    @staticmethod
+    def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return {str(row[1]) for row in rows}
+
+    def _ensure_column(
+        self,
+        conn: sqlite3.Connection,
+        table_name: str,
+        column_name: str,
+        declaration: str,
+    ) -> None:
+        existing = self._table_columns(conn, table_name)
+        if column_name in existing:
+            return
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {declaration}")
 
     def upsert_catalog(self, items: list[CatalogItem], image_dir: Path) -> None:
         timestamp = _utc_now()
@@ -129,6 +215,110 @@ class RetailNextDB:
                 """,
                 payload,
             )
+
+    def ensure_shopper_profile(self, shopper_name: str) -> None:
+        safe_name = shopper_name.strip() or "GlobalMart Fashion Shopper"
+        with self._connect() as conn:
+            columns = self._table_columns(conn, "shopper_profiles")
+            values: dict[str, Any] = {
+                "shopper_name": safe_name,
+                "membership_tier": "GlobalMart Fashion Plus",
+                "updated_at": _utc_now(),
+            }
+            if "preferred_gender" in columns:
+                values["preferred_gender"] = "Unspecified"
+            if "favorite_color" in columns:
+                values["favorite_color"] = "Unspecified"
+            if "favorite_article_type" in columns:
+                values["favorite_article_type"] = "Unspecified"
+            if "click_events" in columns:
+                values["click_events"] = 0
+            if "cart_add_events" in columns:
+                values["cart_add_events"] = 0
+
+            # Backward-compatible defaults for older schema variants.
+            if "style_preferences" in columns:
+                values["style_preferences"] = "[]"
+            if "color_preferences" in columns:
+                values["color_preferences"] = "[]"
+            if "usage_preferences" in columns:
+                values["usage_preferences"] = "[]"
+
+            column_sql = ", ".join(values.keys())
+            placeholder_sql = ", ".join(["?"] * len(values))
+            conn.execute(
+                f"""
+                INSERT INTO shopper_profiles ({column_sql})
+                VALUES ({placeholder_sql})
+                ON CONFLICT(shopper_name) DO NOTHING
+                """,
+                tuple(values.values()),
+            )
+
+    def get_profile(self, shopper_name: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT shopper_name,
+                       membership_tier,
+                       preferred_gender,
+                       favorite_color,
+                       favorite_article_type,
+                       click_events,
+                       cart_add_events,
+                       updated_at
+                FROM shopper_profiles
+                WHERE shopper_name = ?
+                """,
+                (shopper_name,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_profile_preferences(
+        self,
+        *,
+        shopper_name: str,
+        preferred_gender: str | None = None,
+        favorite_color: str | None = None,
+        favorite_article_type: str | None = None,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE shopper_profiles
+                SET preferred_gender = COALESCE(?, preferred_gender),
+                    favorite_color = COALESCE(?, favorite_color),
+                    favorite_article_type = COALESCE(?, favorite_article_type),
+                    updated_at = ?
+                WHERE shopper_name = ?
+                """,
+                (preferred_gender, favorite_color, favorite_article_type, _utc_now(), shopper_name),
+            )
+
+    def increment_profile_event_counter(self, *, shopper_name: str, event_type: str, amount: int = 1) -> None:
+        safe_amount = max(1, int(amount))
+        with self._connect() as conn:
+            if event_type == "cart_add":
+                conn.execute(
+                    """
+                    UPDATE shopper_profiles
+                    SET cart_add_events = cart_add_events + ?,
+                        updated_at = ?
+                    WHERE shopper_name = ?
+                    """,
+                    (safe_amount, _utc_now(), shopper_name),
+                )
+                return
+            if event_type == "click":
+                conn.execute(
+                    """
+                    UPDATE shopper_profiles
+                    SET click_events = click_events + ?,
+                        updated_at = ?
+                    WHERE shopper_name = ?
+                    """,
+                    (safe_amount, _utc_now(), shopper_name),
+                )
 
     def list_random_products(self, limit: int, gender: str | None = None) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -244,6 +434,116 @@ class RetailNextDB:
             ).fetchone()
         return dict(row) if row else None
 
+    def add_cart_item(self, *, shopper_name: str, product_id: int, quantity: int) -> None:
+        safe_qty = max(1, int(quantity))
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO cart_items (shopper_name, product_id, quantity, added_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(shopper_name, product_id) DO UPDATE SET
+                    quantity = quantity + excluded.quantity,
+                    added_at = excluded.added_at
+                """,
+                (shopper_name, product_id, safe_qty, _utc_now()),
+            )
+
+    def remove_cart_item(self, *, shopper_name: str, product_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                DELETE FROM cart_items
+                WHERE shopper_name = ? AND product_id = ?
+                """,
+                (shopper_name, product_id),
+            )
+
+    def get_cart_items(self, shopper_name: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT ci.shopper_name,
+                       ci.product_id,
+                       ci.quantity,
+                       ci.added_at,
+                       cp.id,
+                       cp.gender,
+                       cp.master_category,
+                       cp.sub_category,
+                       cp.article_type,
+                       cp.base_colour,
+                       cp.season,
+                       cp.year,
+                       cp.usage,
+                       cp.name,
+                       cp.image_path
+                FROM cart_items ci
+                JOIN catalog_products cp ON cp.id = ci.product_id
+                WHERE ci.shopper_name = ?
+                ORDER BY ci.added_at DESC
+                """,
+                (shopper_name,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_feedback(
+        self,
+        *,
+        shopper_name: str,
+        event_type: str,
+        session_id: str | None,
+        product_id: int | None,
+        event_value: str | None,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO shopper_events (
+                    shopper_name, session_id, product_id, event_type, event_value, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (shopper_name, session_id, product_id, event_type, event_value, _utc_now()),
+            )
+
+    def list_recent_feedback(self, shopper_name: str, *, limit: int = 20) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 100))
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT shopper_name, session_id, product_id, event_type, event_value, created_at
+                FROM shopper_events
+                WHERE shopper_name = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (shopper_name, safe_limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_top_attribute_for_shopper(self, *, shopper_name: str, attribute: str) -> str | None:
+        if attribute not in {"gender", "base_colour", "article_type"}:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                f"""
+                SELECT cp.{attribute} AS value, COUNT(*) AS score
+                FROM shopper_events se
+                JOIN catalog_products cp ON cp.id = se.product_id
+                WHERE se.shopper_name = ?
+                  AND se.event_type IN ('click', 'cart_add')
+                  AND cp.{attribute} IS NOT NULL
+                  AND trim(cp.{attribute}) != ''
+                GROUP BY cp.{attribute}
+                ORDER BY score DESC
+                LIMIT 1
+                """,
+                (shopper_name,),
+            ).fetchone()
+        if not row:
+            return None
+        value = str(row["value"]).strip()
+        return value or None
+
     def store_match_check(
         self,
         *,
@@ -274,7 +574,21 @@ class RetailNextDB:
                 SELECT
                   (SELECT COUNT(*) FROM catalog_products) AS product_count,
                   (SELECT COUNT(*) FROM recommendation_sessions) AS session_count,
-                  (SELECT COUNT(*) FROM match_checks) AS match_count
+                  (SELECT COUNT(*) FROM match_checks) AS match_count,
+                  (SELECT COUNT(*) FROM shopper_profiles) AS profile_count,
+                  (SELECT COUNT(*) FROM cart_items) AS cart_line_count,
+                  (SELECT COUNT(*) FROM shopper_events) AS event_count
                 """
             ).fetchone()
-        return dict(counts) if counts else {"product_count": 0, "session_count": 0, "match_count": 0}
+        return (
+            dict(counts)
+            if counts
+            else {
+                "product_count": 0,
+                "session_count": 0,
+                "match_count": 0,
+                "profile_count": 0,
+                "cart_line_count": 0,
+                "event_count": 0,
+            }
+        )

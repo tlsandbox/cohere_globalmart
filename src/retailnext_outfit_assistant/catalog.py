@@ -1,3 +1,5 @@
+"""Catalog loaders/index utilities for the private fashion product dataset."""
+
 from __future__ import annotations
 
 import csv

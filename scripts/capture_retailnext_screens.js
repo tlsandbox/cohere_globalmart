@@ -1,4 +1,5 @@
 /* eslint-disable no-console */
+// Captures deterministic UI screenshots for demo docs and presentation assets.
 const fs = require('fs');
 const path = require('path');
 
