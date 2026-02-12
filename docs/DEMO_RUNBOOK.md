@@ -28,6 +28,7 @@ Show the home page and explain:
 - Natural language + voice + image entry points
 - Private catalog retrieval
 - Cohere-powered ranking and explanation chips
+- Guardrails for image relevance (primary article-type focus)
 
 ## 3) Live Product Discovery (10 min)
 
@@ -49,6 +50,7 @@ Show the home page and explain:
    - browser speech path when available
    - fallback recorder + backend transcribe when needed
 2. Upload an image and show image-guided recommendations.
+3. Demonstrate shirt-image behavior returning shirts (not shoes) due to article-focus guardrail.
 
 ## 6) Multilingual Walkthrough (7 min)
 
@@ -59,12 +61,14 @@ Show the home page and explain:
 ## 7) Technical Deep Dive (5 min)
 
 Cover pipeline order:
-1. Intent extraction
-2. Lexical retrieval
-3. Dense embedding retrieval
+1. Query normalization (typo/synonym cleanup)
+2. Intent extraction (heuristic + optional Cohere parse)
+3. Lexical retrieval + dense embedding retrieval
 4. RRF fusion
-5. Cohere rerank
-6. Business controls (gender/usage/season/recency)
+5. Adaptive rerank depth (Cohere rerank)
+6. Business controls (gender/usage/season/recency + mismatch penalties)
+7. Runtime caches (intent + query embedding)
+8. Image primary-article focus guardrail
 
 Then show data model:
 - recommendation sessions/items

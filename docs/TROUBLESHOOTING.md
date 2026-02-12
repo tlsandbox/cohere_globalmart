@@ -100,3 +100,17 @@ Fix:
 4. Verify API localization quickly:
    - `GET /api/languages`
    - `GET /api/home-products?lang=ja`
+
+## 9) Uploaded shirt image returns mostly shoes
+
+Cause:
+- Vision analysis may output multiple article types (for example `Tshirts` and `Sports Shoes`) from one image.
+- If the API process is stale, the latest article-focus guardrail is not applied.
+
+Fix:
+1. Restart API using:
+   ```bash
+   ./scripts/run_api_dev.sh
+   ```
+2. Hard-refresh the browser and re-upload the image.
+3. Confirm server code is current (`search_by_image` in `service.py`) and uses primary article-type focus.

@@ -8,6 +8,7 @@ Use this folder for technical architecture, demo execution, and troubleshooting.
 - [Demo Runbook](./DEMO_RUNBOOK.md)
 - [Check Your Match Scoring](./CHECK_YOUR_MATCH.md)
 - [Troubleshooting Guide](./TROUBLESHOOTING.md)
+- [Presentation Content (45 min)](../deliverables/COHERE_GLOBALMART_PRESENTATION_CONTENT.md)
 - [Release Notes v1.0.0](./releases/v1.0.0.md)
 
 ## Recommended Reading Order

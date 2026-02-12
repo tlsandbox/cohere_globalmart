@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+import difflib
 import hashlib
 import json
 import logging
@@ -86,6 +87,62 @@ _USAGE_LEXICON: dict[str, set[str]] = {
     "Formal": {"formal", "smart", "elegant", "blazer", "suit"},
     "Sports": {"sport", "sports", "gym", "training", "running", "active"},
     "Ethnic": {"ethnic", "traditional", "festive", "kurta", "saree"},
+}
+
+_QUERY_TOKEN_ALIASES: dict[str, str] = {
+    "pant": "pants",
+    "pantrs": "pants",
+    "pantss": "pants",
+    "trouser": "trousers",
+    "sneaker": "sneakers",
+    "snikers": "sneakers",
+    "snicker": "sneakers",
+    "tee": "tshirt",
+    "tees": "tshirt",
+    "tshirts": "tshirt",
+    "jogger": "joggers",
+}
+
+_ARTICLE_KEYWORD_TO_HINTS: dict[str, list[str]] = {
+    "pants": ["Trousers", "Track Pants", "Jeans"],
+    "trousers": ["Trousers"],
+    "slacks": ["Trousers"],
+    "chinos": ["Trousers"],
+    "jeans": ["Jeans"],
+    "denim": ["Jeans"],
+    "joggers": ["Track Pants", "Tracksuits"],
+    "sneakers": ["Sports Shoes", "Casual Shoes"],
+    "trainers": ["Sports Shoes", "Casual Shoes"],
+    "kicks": ["Sports Shoes", "Casual Shoes"],
+    "shoe": ["Casual Shoes", "Sports Shoes", "Formal Shoes"],
+    "shoes": ["Casual Shoes", "Sports Shoes", "Formal Shoes"],
+    "heels": ["Heels"],
+    "flats": ["Flats"],
+    "shirt": ["Shirts"],
+    "shirts": ["Shirts"],
+    "tshirt": ["Tshirts"],
+    "top": ["Tops"],
+    "tops": ["Tops"],
+    "dress": ["Dresses"],
+    "dresses": ["Dresses"],
+    "skirt": ["Skirts"],
+    "skirts": ["Skirts"],
+    "shorts": ["Shorts"],
+    "sandal": ["Sandals"],
+    "sandals": ["Sandals"],
+    "flipflops": ["Flip Flops"],
+    "slippers": ["Flip Flops"],
+    "kurta": ["Kurtas"],
+    "kurtas": ["Kurtas"],
+    "kurti": ["Kurtis"],
+}
+
+_STYLE_COLOR_HINTS: dict[str, list[str]] = {
+    "sakura": ["Pink"],
+    "cherry": ["Pink", "Red"],
+    "blossom": ["Pink"],
+    "beach": ["Blue", "White"],
+    "earthy": ["Olive", "Brown"],
 }
 
 _COMPLEMENTARY_HINTS: dict[str, str] = {
@@ -429,6 +486,7 @@ class OutfitAssistantService:
         self._id_to_row = {item.id: i for i, item in enumerate(self.index.items)}
         self._search_docs = [self._catalog_search_document(item) for item in self.index.items]
         self._search_docs_normalized = [self._normalize_text(value) for value in self._search_docs]
+        self._search_docs_padded = [f" {value} " for value in self._search_docs_normalized]
 
         self._dense_embeddings: np.ndarray | None = None
         self._dense_norms: np.ndarray | None = None
@@ -437,6 +495,10 @@ class OutfitAssistantService:
 
         self._session_explanations: dict[str, dict[int, list[str]]] = {}
         self._translation_cache: dict[tuple[str, str], str] = {}
+        self._intent_cache: dict[str, dict[str, Any]] = {}
+        self._query_embedding_cache: dict[str, np.ndarray] = {}
+        self._known_query_tokens = self._build_known_query_tokens()
+        self._known_query_token_list = sorted(self._known_query_tokens)
 
         self.db.upsert_catalog(self.index.items, self.image_dir)
         self.db.ensure_shopper_profile(self.default_shopper_name)
@@ -668,6 +730,168 @@ class OutfitAssistantService:
         return out
 
     @staticmethod
+    def _cache_set(cache: dict, key: Any, value: Any, *, max_size: int) -> None:
+        cache[key] = value
+        if len(cache) <= max_size:
+            return
+        oldest = next(iter(cache.keys()), None)
+        if oldest is not None:
+            cache.pop(oldest, None)
+
+    def _build_known_query_tokens(self) -> set[str]:
+        known: set[str] = set()
+        for article in self.article_types:
+            normalized = self._normalize_text(article)
+            known.update(token for token in normalized.split() if token)
+            compact = self._compact(article)
+            if compact:
+                known.add(compact)
+
+        for color in self.catalog_colors:
+            known.update(token for token in self._normalize_text(color).split() if token)
+
+        for usage_keywords in _USAGE_LEXICON.values():
+            known.update(usage_keywords)
+
+        known.update(_QUERY_TOKEN_ALIASES.keys())
+        known.update(_ARTICLE_KEYWORD_TO_HINTS.keys())
+        known.update(_STYLE_COLOR_HINTS.keys())
+        return known
+
+    def _fuzzy_token_alias(self, token: str) -> str:
+        normalized = self._normalize_text(token)
+        if not normalized:
+            return normalized
+        if normalized in _QUERY_TOKEN_ALIASES:
+            return _QUERY_TOKEN_ALIASES[normalized]
+        if normalized in self._known_query_tokens or len(normalized) < 5:
+            return normalized
+        candidates = difflib.get_close_matches(normalized, self._known_query_token_list, n=1, cutoff=0.84)
+        if not candidates:
+            return normalized
+        matched = candidates[0]
+        return _QUERY_TOKEN_ALIASES.get(matched, matched)
+
+    def _normalize_query_text(self, text: str) -> str:
+        tokens = self._tokenize(text)
+        if not tokens:
+            return ""
+        fixed_tokens = [self._fuzzy_token_alias(token) for token in tokens]
+        return " ".join(token for token in fixed_tokens if token)
+
+    def _resolve_article_hints_from_tokens(self, tokens: list[str]) -> list[str]:
+        hints: list[str] = []
+        token_pool = [self._fuzzy_token_alias(token) for token in tokens]
+        for token in token_pool:
+            mapped = _ARTICLE_KEYWORD_TO_HINTS.get(token)
+            if mapped:
+                hints.extend(mapped)
+
+        compact_tokens = {self._compact(token) for token in token_pool}
+        for article in self.article_types:
+            article_norm = self._normalize_text(article)
+            article_compact = self._compact(article)
+            if not article_norm:
+                continue
+            if article_norm in token_pool or article_compact in compact_tokens:
+                hints.append(article)
+                continue
+            singular = article_compact[:-1] if article_compact.endswith("s") else article_compact
+            if singular and singular in compact_tokens:
+                hints.append(article)
+        return self._dedupe(hints)
+
+    def _intent_cache_key(self, query_text: str, image_summary: dict[str, Any] | None) -> str:
+        query_key = self._normalize_text(query_text)
+        if not image_summary:
+            return query_key
+        try:
+            image_key = json.dumps(image_summary, sort_keys=True, separators=(",", ":"))
+        except Exception:
+            image_key = ""
+        return f"{query_key}|{image_key}"
+
+    def _should_skip_intent_llm(
+        self,
+        *,
+        query_text: str,
+        heuristic: dict[str, Any],
+        image_summary: dict[str, Any] | None,
+    ) -> bool:
+        if image_summary:
+            return True
+
+        tokens = self._tokenize(query_text)
+        signal_count = 0
+        if str(heuristic.get("gender") or "").strip():
+            signal_count += 1
+        if heuristic.get("article_hints"):
+            signal_count += 1
+        if heuristic.get("color_hints"):
+            signal_count += 1
+        if heuristic.get("usage_hints"):
+            signal_count += 1
+        if heuristic.get("season_hints"):
+            signal_count += 1
+
+        if signal_count >= 2:
+            return True
+        if signal_count >= 1 and len(tokens) <= 6:
+            return True
+        return False
+
+    def _enrich_retrieval_query(self, query_text: str, intent: dict[str, Any]) -> str:
+        parts: list[str] = [str(query_text or "").strip()]
+        if intent.get("gender"):
+            parts.append(str(intent["gender"]))
+        if intent.get("article_hints"):
+            parts.extend([str(value) for value in intent["article_hints"][:2]])
+        if intent.get("color_hints"):
+            parts.extend([str(value) for value in intent["color_hints"][:2]])
+        if intent.get("usage_hints"):
+            parts.append(str(intent["usage_hints"][0]))
+        return " ".join(part for part in parts if str(part).strip())
+
+    def _primary_image_article_type(self, analysis: dict[str, Any]) -> str:
+        raw_values = analysis.get("article_types", [])
+        if not isinstance(raw_values, list):
+            return ""
+        article_types = [str(value).strip() for value in raw_values if str(value).strip()]
+        if not article_types:
+            return ""
+
+        footwear_tokens = {"shoe", "shoes", "sandal", "sandals", "flip", "flop", "flops", "heel", "heels", "flat", "flats"}
+        for article in article_types:
+            tokens = set(self._tokenize(article))
+            if tokens and tokens.isdisjoint(footwear_tokens):
+                return article
+        return article_types[0]
+
+    def _prioritize_primary_article_ranked(
+        self,
+        ranked: list[tuple[int, float]],
+        *,
+        primary_article_type: str,
+    ) -> list[tuple[int, float]]:
+        primary_norm = self._normalize_text(primary_article_type)
+        if not primary_norm or not ranked:
+            return ranked
+
+        matched: list[tuple[int, float]] = []
+        others: list[tuple[int, float]] = []
+        for product_id, score in ranked:
+            row = self.db.get_product(int(product_id))
+            article_norm = self._normalize_text(row["article_type"]) if row else ""
+            if article_norm == primary_norm:
+                matched.append((int(product_id), float(score) + 0.15))
+            else:
+                others.append((int(product_id), float(score)))
+
+        matched.sort(key=lambda item: item[1], reverse=True)
+        others.sort(key=lambda item: item[1], reverse=True)
+        return matched + others
+
+    @staticmethod
     def _catalog_search_document(item: CatalogItem) -> str:
         year_text = str(item.year) if item.year is not None else "unknown"
         return (
@@ -789,25 +1013,30 @@ class OutfitAssistantService:
         if self._dense_embeddings is None or self._dense_norms is None:
             return []
 
-        client = self._ensure_client()
-        call_timeout = self.request_timeout_seconds
-        if deadline is not None:
-            call_timeout = min(call_timeout, self._remaining_timeout(deadline))
+        query_key = f"{self.cfg.embed_model}:{self._normalize_text(query)}"
+        query_embedding = self._query_embedding_cache.get(query_key)
+        if query_embedding is None:
+            client = self._ensure_client()
+            call_timeout = self.request_timeout_seconds
+            if deadline is not None:
+                call_timeout = min(call_timeout, self._remaining_timeout(deadline))
 
-        vectors = self._run_with_timeout(
-            "Query embedding request",
-            lambda: embed_texts(
-                client=client,
-                texts=[query],
-                model=self.cfg.embed_model,
-                input_type="search_query",
-            ),
-            call_timeout,
-        )
-        if not vectors:
-            return []
+            vectors = self._run_with_timeout(
+                "Query embedding request",
+                lambda: embed_texts(
+                    client=client,
+                    texts=[query],
+                    model=self.cfg.embed_model,
+                    input_type="search_query",
+                ),
+                call_timeout,
+            )
+            if not vectors:
+                return []
 
-        query_embedding = np.asarray(vectors[0], dtype=np.float32)
+            query_embedding = np.asarray(vectors[0], dtype=np.float32)
+            self._cache_set(self._query_embedding_cache, query_key, query_embedding, max_size=1024)
+
         idx, _scores = top_k_cosine(
             query_embedding,
             self._dense_embeddings,
@@ -826,12 +1055,12 @@ class OutfitAssistantService:
         query_blob = f" {normalized_query} "
 
         scored_rows: list[tuple[int, float]] = []
-        for row_idx, doc in enumerate(self._search_docs_normalized):
+        for row_idx, doc_blob in enumerate(self._search_docs_padded):
             score = 0.0
-            if normalized_query and query_blob in f" {doc} ":
+            if normalized_query and query_blob in doc_blob:
                 score += 4.0
             for token in tokens:
-                if f" {token} " in f" {doc} ":
+                if f" {token} " in doc_blob:
                     score += 1.0
             if score > 0:
                 scored_rows.append((row_idx, score))
@@ -857,12 +1086,13 @@ class OutfitAssistantService:
         *,
         top_k: int,
         deadline: float | None,
+        use_ai_rerank: bool = True,
     ) -> tuple[list[tuple[int, float]], bool]:
         if not candidate_rows:
             return [], False
 
         ai_used = False
-        if self.ai_enabled:
+        if self.ai_enabled and use_ai_rerank:
             client = self._ensure_client()
             documents = [self._search_docs[row_idx] for row_idx in candidate_rows]
             call_timeout = self.request_timeout_seconds
@@ -894,8 +1124,8 @@ class OutfitAssistantService:
         normalized_query = self._normalize_text(query)
         token_set = set(self._tokenize(normalized_query))
         for rank_order, row_idx in enumerate(candidate_rows):
-            doc = self._search_docs_normalized[row_idx]
-            overlap = sum(1 for token in token_set if f" {token} " in f" {doc} ")
+            doc_blob = self._search_docs_padded[row_idx]
+            overlap = sum(1 for token in token_set if f" {token} " in doc_blob)
             score = overlap / max(len(token_set), 1)
             score = max(score, 1.0 / (rank_order + 1))
             fallback_scores.append((row_idx, float(score)))
@@ -908,8 +1138,9 @@ class OutfitAssistantService:
         *,
         image_summary: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        tokens = self._tokenize(query_text)
-        query_norm = self._normalize_text(query_text)
+        normalized_query = self._normalize_query_text(query_text)
+        tokens = self._tokenize(normalized_query)
+        query_norm = self._normalize_text(normalized_query)
         query_compact_tokens = {self._compact(token) for token in tokens}
 
         gender = ""
@@ -920,7 +1151,7 @@ class OutfitAssistantService:
         elif any(token in men_tokens for token in tokens):
             gender = "Men"
 
-        article_hints: list[str] = []
+        article_hints: list[str] = self._resolve_article_hints_from_tokens(tokens)
         for article in self.article_types:
             article_norm = self._normalize_text(article)
             article_compact = self._compact(article)
@@ -940,11 +1171,22 @@ class OutfitAssistantService:
         for color in self.catalog_colors:
             if f" {self._normalize_text(color)} " in f" {query_norm} ":
                 color_hints.append(color)
+        for token in tokens:
+            color_hints.extend(_STYLE_COLOR_HINTS.get(token, []))
 
         usage_hints: list[str] = []
         for usage, keywords in _USAGE_LEXICON.items():
             if any(keyword in tokens for keyword in keywords):
                 usage_hints.append(usage)
+
+        if "wedding" in tokens:
+            usage_hints.extend(["Party", "Formal"])
+            if not article_hints:
+                article_hints.extend(["Dresses", "Shirts", "Blazers", "Kurtas"])
+        if "office" in tokens or "work" in tokens:
+            usage_hints.extend(["Work", "Formal"])
+            if not article_hints:
+                article_hints.extend(["Shirts", "Trousers", "Blazers"])
 
         season_hints: list[str] = []
         for season in ["Summer", "Winter", "Spring", "Fall"]:
@@ -983,7 +1225,7 @@ class OutfitAssistantService:
                 style_keywords.extend([str(value).strip() for value in image_keywords if str(value).strip()])
 
         return {
-            "query_text": query_text,
+            "query_text": normalized_query or query_text,
             "gender": gender,
             "article_hints": self._dedupe(article_hints),
             "color_hints": self._dedupe(color_hints),
@@ -1038,7 +1280,17 @@ class OutfitAssistantService:
         deadline: float | None,
     ) -> dict[str, Any]:
         heuristic = self._heuristic_intent(query_text, image_summary=image_summary)
-        if not self.ai_enabled:
+        cache_key = self._intent_cache_key(query_text, image_summary)
+        cached = self._intent_cache.get(cache_key)
+        if cached is not None:
+            return dict(cached)
+
+        if not self.ai_enabled or self._should_skip_intent_llm(
+            query_text=query_text,
+            heuristic=heuristic,
+            image_summary=image_summary,
+        ):
+            self._cache_set(self._intent_cache, cache_key, dict(heuristic), max_size=512)
             return heuristic
 
         client = self._ensure_client()
@@ -1059,9 +1311,12 @@ class OutfitAssistantService:
             )
         except Exception:
             _LOGGER.warning("Intent extraction fell back to heuristic parsing.")
+            self._cache_set(self._intent_cache, cache_key, dict(heuristic), max_size=512)
             return heuristic
 
-        return self._merge_intent(heuristic, llm_intent)
+        merged = self._merge_intent(heuristic, llm_intent)
+        self._cache_set(self._intent_cache, cache_key, dict(merged), max_size=512)
+        return merged
 
     def _intent_from_session(self, session: dict[str, Any]) -> dict[str, Any]:
         query_text = str(session.get("query_text") or "").strip()
@@ -1098,20 +1353,32 @@ class OutfitAssistantService:
                 for value in article_hints
             )
             if exact_match:
-                boost += 0.24
+                boost += 0.28
                 chips.append("Article type match")
             elif partial_match:
-                boost += 0.12
+                boost += 0.14
                 chips.append("Article type related")
             else:
-                boost -= 0.08
+                boost -= 0.12
+
+        primary_article_type = str(intent.get("primary_article_type") or "").strip()
+        if primary_article_type:
+            primary_norm = self._normalize_text(primary_article_type)
+            item_article_norm = self._normalize_text(item.article_type)
+            if primary_norm and item_article_norm == primary_norm:
+                boost += 0.35
+                chips.append("Primary article focus")
+            elif primary_norm:
+                boost -= 0.22
 
         color_hints = [str(value).strip() for value in intent.get("color_hints", []) if str(value).strip()]
         if color_hints:
             color_norm = self._normalize_text(item.base_colour)
             if any(self._normalize_text(value) == color_norm for value in color_hints):
-                boost += 0.12
+                boost += 0.15
                 chips.append("Color preference match")
+            else:
+                boost -= 0.05
 
         usage_hints = [str(value).strip() for value in intent.get("usage_hints", []) if str(value).strip()]
         if usage_hints:
@@ -1122,8 +1389,10 @@ class OutfitAssistantService:
                 or usage_norm in self._normalize_text(value)
                 for value in usage_hints
             ):
-                boost += 0.10
+                boost += 0.12
                 chips.append("Occasion aligned")
+            else:
+                boost -= 0.04
 
         season_hints = [str(value).strip() for value in intent.get("season_hints", []) if str(value).strip()]
         if season_hints:
@@ -1161,9 +1430,29 @@ class OutfitAssistantService:
         rerank_candidate_limit: int | None = None,
     ) -> tuple[list[tuple[int, float]], bool, dict[int, list[str]]]:
         exclude_ids = exclude_product_ids or set()
-        pool_size = max(self.search_candidate_pool, top_k * 20)
+        query_tokens = self._tokenize(query_text)
+        signal_strength = 0
+        if str(intent.get("gender") or "").strip():
+            signal_strength += 1
+        if intent.get("article_hints"):
+            signal_strength += 1
+        if intent.get("color_hints"):
+            signal_strength += 1
+        if intent.get("usage_hints"):
+            signal_strength += 1
+        if intent.get("season_hints"):
+            signal_strength += 1
+
         if candidate_pool_limit is not None:
-            pool_size = max(top_k * 8, min(pool_size, max(int(candidate_pool_limit), top_k * 8)))
+            pool_size = max(top_k * 8, min(self.search_candidate_pool, max(int(candidate_pool_limit), top_k * 8)))
+        else:
+            if signal_strength >= 2:
+                dynamic_pool = max(top_k * 10, min(self.search_candidate_pool, 110))
+            elif len(query_tokens) <= 4:
+                dynamic_pool = max(top_k * 12, min(self.search_candidate_pool, 130))
+            else:
+                dynamic_pool = max(top_k * 14, min(self.search_candidate_pool, 150))
+            pool_size = max(top_k * 8, dynamic_pool)
 
         lexical_rows = self._lexical_candidate_rows(query_text, pool_size=pool_size)
         dense_rows: list[int] = []
@@ -1191,15 +1480,28 @@ class OutfitAssistantService:
             return fallback, False, reasons
 
         rerank_rows = fused_rows
-        if rerank_candidate_limit is not None:
+        effective_rerank_depth = max(2, int(rerank_depth_multiplier))
+        if signal_strength >= 2:
+            effective_rerank_depth = min(effective_rerank_depth, 4)
+        else:
+            effective_rerank_depth = min(effective_rerank_depth, 6)
+
+        if rerank_candidate_limit is None:
+            if signal_strength >= 2:
+                capped = max(top_k * 4, 32)
+            else:
+                capped = max(top_k * 5, 48)
+        else:
             capped = max(top_k, int(rerank_candidate_limit))
-            rerank_rows = fused_rows[:capped]
+        rerank_rows = fused_rows[:capped]
+        use_ai_rerank = not (signal_strength >= 3 and len(query_tokens) <= 8)
 
         ranked_rows, rerank_ai_used = self._rank_query_candidates(
             query_text,
             rerank_rows,
-            top_k=max(top_k * max(2, int(rerank_depth_multiplier)), top_k),
+            top_k=max(top_k * effective_rerank_depth, top_k),
             deadline=deadline,
+            use_ai_rerank=use_ai_rerank,
         )
 
         lexical_set = set(lexical_rows)
@@ -1416,12 +1718,14 @@ class OutfitAssistantService:
         retrieval_query = cleaned
         if normalized_language != "en":
             retrieval_query = self._translate_to_english(cleaned, normalized_language)
+        retrieval_query = self._normalize_query_text(retrieval_query) or retrieval_query
 
         deadline = time.monotonic() + self.search_timeout_seconds if self.ai_enabled else None
         try:
             intent = self._extract_intent(retrieval_query, image_summary=None, deadline=deadline)
+            retrieval_query_enriched = self._enrich_retrieval_query(retrieval_query, intent)
             ranked, ai_powered, reasons = self._retrieve_ranked(
-                query_text=retrieval_query,
+                query_text=retrieval_query_enriched,
                 intent=intent,
                 top_k=top_k,
                 deadline=deadline,
@@ -1505,22 +1809,46 @@ class OutfitAssistantService:
                         ).strip()
                     ]
 
-                combined_query = "; ".join([part for part in query_parts if part]) or "fashion outfit recommendations"
+                primary_article_type = self._primary_image_article_type(analysis)
+                if primary_article_type:
+                    focused_query = " ".join(
+                        part
+                        for part in [
+                            str(analysis.get("gender", "")),
+                            str(analysis.get("occasion", "")),
+                            " ".join(analysis.get("colors", [])[:2]) if isinstance(analysis.get("colors", []), list) else "",
+                            primary_article_type,
+                            "outfit recommendation",
+                        ]
+                        if str(part).strip()
+                    )
+                    combined_query = focused_query.strip() or "; ".join([part for part in query_parts if part])
+                else:
+                    combined_query = "; ".join([part for part in query_parts if part])
+                combined_query = combined_query or "fashion outfit recommendations"
                 # Image flow already has structured vision signals; avoid extra intent LLM call for latency.
                 intent = self._heuristic_intent(combined_query, image_summary=analysis)
+                if primary_article_type:
+                    intent["primary_article_type"] = primary_article_type
+                    intent["article_hints"] = self._dedupe([primary_article_type] + list(intent.get("article_hints", [])))
+
+                retrieval_top_k = max(top_k * 4, 24)
                 ranked, ranking_ai_powered, reasons = self._retrieve_ranked(
                     query_text=combined_query,
                     intent=intent,
-                    top_k=top_k,
+                    top_k=retrieval_top_k,
                     deadline=deadline,
                     dense_build_if_missing=False,
                     rerank_depth_multiplier=2,
-                    candidate_pool_limit=max(top_k * 6, 60),
-                    rerank_candidate_limit=max(top_k * 4, 40),
+                    candidate_pool_limit=max(retrieval_top_k * 3, 80),
+                    rerank_candidate_limit=max(retrieval_top_k * 2, 60),
                 )
                 if not ranked:
                     ranked = self._random_recommendations(top_k)
                     reasons = {pid: ["Fallback feed"] for pid, _ in ranked}
+                elif primary_article_type:
+                    ranked = self._prioritize_primary_article_ranked(ranked, primary_article_type=primary_article_type)
+                ranked = ranked[:top_k]
 
                 ai_powered = bool(ranking_ai_powered)
                 if ranking_ai_powered:

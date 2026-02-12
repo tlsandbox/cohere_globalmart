@@ -12,6 +12,7 @@ Core components:
 - Cohere APIs for intent parsing, embeddings, reranking, vision analysis, and optional match judgement
 - Frontend flows for text search, voice query, image match, refine-session, and complete-the-look
 - Multilingual layer for UI phrases + localized API payloads (`en`, `ja`, `zh`, `es`)
+- Retrieval optimization layer with typo normalization, adaptive candidate sizing, and in-memory caches
 
 ## Component Diagram
 
@@ -21,6 +22,7 @@ flowchart LR
     JS["home.js / personalized.js"]
     API["FastAPI\napp/api_server.py"]
     Service["OutfitAssistantService\nservice.py"]
+    Optimizer["Query Optimizer\nnormalize + intent cache + embedding cache"]
     DB["SQLite\ndata/retailnext_demo.db"]
     Catalog["Catalog metadata\nlocal cache + dense index"]
     Cohere["Cohere APIs\nChat + Vision + Embed + Rerank"]
@@ -29,6 +31,7 @@ flowchart LR
     Browser --> JS
     JS --> API
     API --> Service
+    Service --> Optimizer
     Service --> DB
     Service --> Catalog
     Service --> Cohere
@@ -39,19 +42,23 @@ flowchart LR
 ## Retrieval Pipeline v2 (Cohere-first)
 
 For recommendation generation:
-1. Parse shopper intent (heuristic + optional Cohere structured intent extraction).
-2. Generate lexical candidates from local metadata.
-3. Generate dense candidates from Cohere embeddings + cosine similarity.
-4. Fuse candidate lists with Reciprocal Rank Fusion (RRF).
-5. Rerank fused list with Cohere rerank.
-6. Apply business controls:
+1. Normalize raw query text (typo/synonym normalization, token aliasing).
+2. Parse shopper intent (heuristic + optional Cohere structured intent extraction).
+3. Reuse intent/query-embedding caches where available.
+4. Generate lexical candidates from local metadata.
+5. Generate dense candidates from Cohere embeddings + cosine similarity.
+6. Fuse candidate lists with Reciprocal Rank Fusion (RRF).
+7. Adapt rerank depth by query signal strength and run Cohere rerank when beneficial.
+8. Apply business controls:
    - gender alignment
    - article/usage/season preference boosts
+   - explicit penalties for mismatch when query carries strong intent
    - optional recency boost by product year
-7. Return recommendations with explanation chips.
+9. Return recommendations with explanation chips.
 
 Performance note:
 - For multilingual Suggest (`/api/complete-look`), explanation and assistant-note localization uses fast templates/term maps (not per-item LLM translation) to keep latency close to English.
+- For repeated/related queries, intent and query-embedding caches remove redundant model calls.
 
 ## Primary Runtime Flows
 
@@ -73,8 +80,9 @@ Performance note:
 
 1. Frontend uploads to `/api/image-match`.
 2. Cohere vision extracts image attributes + candidate queries.
-3. Service runs retrieval v2 and persists session.
-4. Personalized recommendations are returned with explanations.
+3. Service selects a primary article type (for mixed outputs like `Tshirts + Shoes`) and anchors ranking to that type.
+4. Service runs retrieval v2, applies article-focus guardrails, and persists session.
+5. Personalized recommendations are returned with explanations.
 
 ### Session Refine
 
@@ -95,3 +103,13 @@ Performance note:
 - Sensitive payloads are not persisted in logs.
 - Cohere base URL can be set directly (`COHERE_API_BASE_URL`) or via private config JSON (`RN_COHERE_CONFIG_PATH`).
 - Dev launcher enforces/rotates ports in range `8005..8009`.
+
+## Requirement Mapping
+
+| Business Requirement | Technical Implementation |
+| --- | --- |
+| Improve relevance and reduce early abandonment | Hybrid retrieval (lexical + dense + RRF + Cohere rerank) with business controls in `service.py` |
+| Support intelligent personal shopper behavior | Sessionized recommendations, Explain/Suggest/Buy actions, profile/cart feedback loops |
+| Keep customer data off public internet | Private local catalog + SQLite; no public indexing of customer data; optional private Cohere endpoint config |
+| Scale with predictable latency | Dense cache, intent cache, query-embedding cache, adaptive candidate/rerank depth |
+| Support global shoppers | Multilingual frontend and localized API responses (`en`, `ja`, `zh`, `es`) |

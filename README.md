@@ -9,7 +9,8 @@ flowchart LR
     Browser["Web Client\nHome + Personalized"]
     Frontend["home.js / personalized.js\nlanguage-aware UI"]
     API["FastAPI\napp/api_server.py"]
-    Service["OutfitAssistantService\nhybrid retrieval + business rules"]
+    Service["OutfitAssistantService\nquery normalization + hybrid retrieval\nbusiness rules + image article focus"]
+    Cache["Runtime caches\nintent + query embedding"]
     DB["SQLite\nsessions, recs, cart, feedback"]
     Catalog["Private catalog\nCSV + cached index + local images"]
     Cohere["Cohere APIs\nChat, Vision, Embed, Rerank"]
@@ -17,6 +18,7 @@ flowchart LR
     Browser --> Frontend
     Frontend --> API
     API --> Service
+    Service --> Cache
     Service --> DB
     Service --> Catalog
     Service --> Cohere
@@ -28,6 +30,8 @@ For a deeper walkthrough, see [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 - Hybrid retrieval (`lexical + dense + RRF + Cohere rerank`)
 - Natural language search and image-upload matching
+- Query optimizer for natural language (`typo normalization + adaptive candidate depth + selective rerank + caches`)
+- Vision ranking guardrail to keep image matches anchored to the primary detected article type
 - Voice transcription path with browser-first and backend fallback behavior
 - AI Explain + Suggest (Complete the Look) + Buy actions
 - Cart/profile/footer content backed by real API routes
@@ -107,3 +111,4 @@ Port behavior:
 - [Architecture](./docs/ARCHITECTURE.md)
 - [Demo Runbook](./docs/DEMO_RUNBOOK.md)
 - [Troubleshooting Guide](./docs/TROUBLESHOOTING.md)
+- [Presentation Content (45 min)](./deliverables/COHERE_GLOBALMART_PRESENTATION_CONTENT.md)
